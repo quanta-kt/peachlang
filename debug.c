@@ -17,10 +17,12 @@ void disassemble_chunk(Chunk *chunk, const char *name) {
 size_t disassemble_instruction(Chunk* chunk, size_t offset) {
   printf("%04zu ", offset);
 
-  if (offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) {
+  size_t line = LineInfo_get(&chunk->lines, offset);
+
+  if (offset > 0 && line == LineInfo_get(&chunk->lines, offset - 1)) {
     printf("   | ");
   } else {
-    printf("%4zu ", chunk->lines[offset]);
+    printf("%4zu ", line);
   }
 
   uint8_t instruction = chunk->code[offset];

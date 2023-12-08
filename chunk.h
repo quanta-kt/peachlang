@@ -10,12 +10,32 @@ typedef enum {
 } OpCode;
 
 typedef struct {
+  size_t line;
+  uint8_t times;
+} LineInfoItem;
+
+typedef struct {
+  size_t capacity;
+  size_t size;
+  LineInfoItem* items;
+} LineInfo;
+
+void LineInfo_init(LineInfo* line_info);
+
+void LineInfo_add(LineInfo* line_info, size_t line);
+
+size_t LineInfo_get(LineInfo *line_info, size_t at);
+
+void LineInfo_free(LineInfo* line_info);
+
+
+typedef struct {
   size_t count;
   size_t capacity;
   uint8_t* code;
   ValueArray constants;
 
-  size_t* lines;
+  LineInfo lines;
 } Chunk;
 
 void Chunk_init(Chunk* chunkl);
