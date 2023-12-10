@@ -11,22 +11,8 @@ typedef enum {
 
 typedef struct {
   size_t line;
-  uint8_t times;
-} LineInfoItem;
-
-typedef struct {
-  size_t capacity;
-  size_t size;
-  LineInfoItem* items;
-} LineInfo;
-
-void LineInfo_init(LineInfo* line_info);
-
-void LineInfo_add(LineInfo* line_info, size_t line);
-
-size_t LineInfo_get(LineInfo *line_info, size_t at);
-
-void LineInfo_free(LineInfo* line_info);
+  size_t offset;
+} LineStart;
 
 
 typedef struct {
@@ -35,12 +21,16 @@ typedef struct {
   uint8_t* code;
   ValueArray constants;
 
-  LineInfo lines;
+  LineStart* lines;
+  size_t line_count;
+  size_t line_capacity;
 } Chunk;
 
 void Chunk_init(Chunk* chunkl);
 
 void Chunk_write(Chunk* chunk, uint8_t byte, size_t line);
+
+size_t Chunk_get_line(Chunk* chunk, size_t instruction);
 
 size_t Chunk_add_constant(Chunk *chunk, Value value);
 

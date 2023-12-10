@@ -1,63 +1,16 @@
-#include <stdint.h>
-
 #include "chunk.h"
 #include "memory.h"
 #include "value.h"
-
-void LineInfo_init(LineInfo* line_info) {
-  line_info->capacity = 0;
-  line_info->size = 0;
-  line_info->items = NULL;
-}
-
-void LineInfo_free(LineInfo* line_info) {
-  FREE_ARRAY(LineInfoItem, line_info->items, line_info->capacity);
-}
-
-void LineInfo_add(LineInfo* line_info, size_t line) {
-  if (line_info->size > 0 && line_info->items[line_info->size - 1].line == line) {
-    line_info->items[line_info->size - 1].times++;
-    return;
-  } 
-
-  if (line_info->capacity < line_info->size + 1) {
-    size_t old_capacity = line_info->capacity;
-    line_info->capacity = GROW_CAPACITY(old_capacity); 
-
-    line_info->items = GROW_ARRAY(LineInfoItem, line_info->items, old_capacity, line_info->capacity);
-  }
-
-  LineInfoItem new = {
-    .times = 1,
-    .line = line,
-  };
-
-  line_info->items[line_info->size] = new;
-  line_info->size++;
-}
-
-size_t LineInfo_get(LineInfo *line_info, size_t at) {
-  size_t curr = 0;
-
-  for (size_t i = 0; i < line_info->size; i++) {
-    size_t curr_end = curr + line_info->items[i].times - 1;
-
-    if (at >= curr && at <= curr_end) {
-      return line_info->items[i].line;
-    }
-
-    curr = curr_end + 1;
-  }
-
-  return 0;
-}
 
 void Chunk_init(Chunk* chunk) {
   chunk->code = NULL;
   chunk->count = 0;
   chunk->capacity = 0;
-  
-  LineInfo_init(&chunk->lines);
+
+  chunk->line_capacity = 0;
+  chunk->line_count = 0;
+  chunk->lines = NULL;
+
   ValueArray_init(&chunk->constants);
 }
 
@@ -69,15 +22,49 @@ void Chunk_write(Chunk* chunk, uint8_t byte, size_t line) {
   }
 
   chunk->code[chunk->count] = byte;
-  LineInfo_add(&chunk->lines, line);
   chunk->count++;
+
+  if (chunk->line_count > 0 &&
+      chunk->lines[chunk->line_count - 1].line == line) {
+    return;
+  }
+
+  if (chunk->line_capacity < chunk->line_count + 1) {
+    size_t old_capacity = chunk->line_capacity;
+    chunk->line_capacity = GROW_CAPACITY(old_capacity);
+    chunk->lines = GROW_ARRAY(LineStart, chunk->lines, old_capacity, chunk->line_capacity);
+  }
+
+  LineStart * line_start = &chunk->lines[chunk->line_count++];
+  line_start->offset = chunk->count - 1;
+  line_start->line = line;
+}
+
+size_t Chunk_get_line(Chunk* chunk, size_t instruction) {
+  size_t start = 0;
+  size_t end = chunk->line_count - 1;
+
+
+  for (;;) {
+    size_t mid = ((end - start) / 2) + start;
+    LineStart* line = &chunk->lines[mid];
+
+    if (instruction < line->offset) {
+      end = mid - 1;
+    } else if (mid == chunk->line_count - 1 || 
+        instruction < chunk->lines[mid + 1].offset) {
+
+      return line->line;
+    } else {
+      start = mid + 1;
+    }
+  }
 }
 
 void Chunk_free(Chunk* chunk) {
   FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
-
+  FREE_ARRAY(LineStart, chunk->lines, chunk->line_capacity);
   ValueArray_free(&chunk->constants);
-  LineInfo_free(&chunk->lines);
 
   Chunk_init(chunk);
 }
