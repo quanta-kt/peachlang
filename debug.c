@@ -62,9 +62,9 @@ static size_t constant_long_instruction(const char* name, const Chunk* chunk, co
   const uint8_t b = chunk->code[offset + 2];
   const uint8_t c = chunk->code[offset + 3];
 
-  const size_t constant = a | (b << 8) | (c << 8);
+  const uint32_t constant = a | (b << 8) | (c << 8);
 
-  printf("%-16s %4zu '", name, constant);
+  printf("%-16s %4u '", name, constant);
   Value_print(chunk->constants.values[constant]);
   printf("'\n");
 
