@@ -4,6 +4,7 @@
 #include "debug.h"
 
 static size_t constant_instruction(const char* name, const Chunk* chunk, const size_t offset);
+static size_t constant_long_instruction(const char* name, const Chunk* chunk, const size_t offset);
 static size_t simple_instruction(const char* name, int offset);
 
 void disassemble_chunk(Chunk *chunk, const char *name) {
@@ -31,6 +32,9 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
     case OP_LOAD_CONST:
       return constant_instruction("OP_LOAD_CONST", chunk, offset);
 
+    case OP_LOAD_CONST_LONG:
+      return constant_long_instruction("OP_LOAD_CONST_LONG", chunk, offset);
+
     case OP_RETURN:
       return simple_instruction("OP_RETURN", offset);
     default:
@@ -51,5 +55,19 @@ static size_t constant_instruction(const char* name, const Chunk* chunk, const s
   printf("'\n");
 
   return offset + 2;
+}
+
+static size_t constant_long_instruction(const char* name, const Chunk* chunk, const size_t offset) {
+  const uint8_t a = chunk->code[offset + 1];
+  const uint8_t b = chunk->code[offset + 2];
+  const uint8_t c = chunk->code[offset + 3];
+
+  const size_t constant = a | (b << 8) | (c << 8);
+
+  printf("%-16s %4zu '", name, constant);
+  Value_print(chunk->constants.values[constant]);
+  printf("'\n");
+
+  return offset + 4;
 }
 

@@ -40,6 +40,26 @@ void Chunk_write(Chunk* chunk, uint8_t byte, size_t line) {
   line_start->line = line;
 }
 
+size_t Chunk_add_constant(Chunk* chunk, Value value) {
+  ValueArray_write(&chunk->constants, value);
+  return chunk->constants.count - 1;
+}
+
+void Chunk_write_constant(Chunk *chunk, Value value, size_t line) {
+  size_t addr = Chunk_add_constant(chunk, value);
+
+  if (addr <= 0xff) {
+    Chunk_write(chunk, OP_LOAD_CONST, line);
+    Chunk_write(chunk, addr, line);
+    return;
+  }
+
+  Chunk_write(chunk, OP_LOAD_CONST_LONG, line);
+  Chunk_write(chunk, (addr >>  0) & 0xff, line);
+  Chunk_write(chunk, (addr >>  8) & 0xff, line);
+  Chunk_write(chunk, (addr >> 16) & 0xff, line);
+}
+
 size_t Chunk_get_line(Chunk* chunk, size_t instruction) {
   size_t start = 0;
   size_t end = chunk->line_count - 1;
@@ -69,8 +89,4 @@ void Chunk_free(Chunk* chunk) {
   Chunk_init(chunk);
 }
 
-size_t Chunk_add_constant(Chunk* chunk, Value value) {
-  ValueArray_write(&chunk->constants, value);
-  return chunk->constants.count - 1;
-}
 

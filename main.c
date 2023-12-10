@@ -21,10 +21,14 @@ int main(int argc, char *argv[]) {
   Chunk_write(&chunk, OP_RETURN, 124);
   Chunk_write(&chunk, OP_RETURN, 124);
 
-  Chunk_write(&chunk, OP_LOAD_CONST, 125);
-  Chunk_write(&chunk, constant, 125);
+  for (double i = 0; i < 260; i++) {
+    Chunk_write_constant(&chunk, i, i + 125);
+  }
 
-  Chunk_write(&chunk, OP_RETURN, 125);
+  Chunk_write(&chunk, OP_LOAD_CONST, 125 + 260);
+  Chunk_write(&chunk, constant, 125 + 260);
+
+  Chunk_write(&chunk, OP_RETURN, 125 + 260);
 
   disassemble_chunk(&chunk, "test chunk");
 
