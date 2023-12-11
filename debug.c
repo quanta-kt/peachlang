@@ -35,8 +35,24 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
     case OP_LOAD_CONST_LONG:
       return constant_long_instruction("OP_LOAD_CONST_LONG", chunk, offset);
 
+    case OP_NEGATE:
+      return simple_instruction("OP_NEGATE", offset);
+
+    case OP_ADD:
+      return simple_instruction("OP_ADD", offset);
+  
+    case OP_SUB:
+      return simple_instruction("OP_SUB", offset);
+
+    case OP_DIV:
+      return simple_instruction("OP_DIV", offset);
+
+    case OP_MUL:
+      return simple_instruction("OP_MUL", offset);
+
     case OP_RETURN:
       return simple_instruction("OP_RETURN", offset);
+
     default:
       printf("Unknown opcode: %d\n", instruction);
       return offset + 1;
