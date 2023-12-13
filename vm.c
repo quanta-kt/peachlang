@@ -1,5 +1,6 @@
 #include "chunk.h"
 #include "common.h"
+#include "compiler.h"
 #include "value.h"
 #include "vm.h" 
 #include "debug.h"
@@ -86,6 +87,11 @@ static InterpretResult run() {
   #undef READ_BYTE
   #undef READ_CONSTANT
   #undef READ_CONSTANT_LONG
+}
+
+InterpretResult VM_interpret_source(const char *source) {
+  compile(source);
+  return INTERPRET_OK;
 }
 
 InterpretResult VM_interpret(Chunk* chunk) {
