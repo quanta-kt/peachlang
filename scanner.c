@@ -1,6 +1,5 @@
 #include "scanner.h"
 
-#include <linux/limits.h>
 #include <string.h>
 #include "common.h"
 
