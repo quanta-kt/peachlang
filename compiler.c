@@ -6,6 +6,7 @@
 #include "compiler.h"
 #include "debug.h"
 #include "scanner.h"
+#include "value.h"
 
 
 typedef struct {
@@ -47,6 +48,7 @@ static void binary(Parser* parser);
 static void grouping(Parser* parser);
 static void unary(Parser* parser);
 static void number(Parser* parser);
+static void literal(Parser* parser);
 
 ParseRule rules[] = {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
@@ -60,31 +62,31 @@ ParseRule rules[] = {
   [TOKEN_SEMICOLON]     = {NULL,     NULL,   PREC_NONE},
   [TOKEN_SLASH]         = {NULL,     binary, PREC_FACTOR},
   [TOKEN_STAR]          = {NULL,     binary, PREC_FACTOR},
-  [TOKEN_BANG]          = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_BANG_EQUAL]    = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_BANG]          = {unary,    NULL,   PREC_NONE},
+  [TOKEN_BANG_EQUAL]    = {NULL,     binary, PREC_EQUALITY},
   [TOKEN_EQUAL]         = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_EQUAL_EQUAL]   = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_GREATER]       = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_GREATER_EQUAL] = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_LESS]          = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_LESS_EQUAL]    = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_EQUAL_EQUAL]   = {NULL,     binary, PREC_EQUALITY},
+  [TOKEN_GREATER]       = {NULL,     binary, PREC_COMPARISON},
+  [TOKEN_GREATER_EQUAL] = {NULL,     binary, PREC_COMPARISON},
+  [TOKEN_LESS]          = {NULL,     binary, PREC_COMPARISON},
+  [TOKEN_LESS_EQUAL]    = {NULL,     binary, PREC_COMPARISON},
   [TOKEN_IDENTIFIER]    = {NULL,     NULL,   PREC_NONE},
   [TOKEN_STRING]        = {NULL,     NULL,   PREC_NONE},
   [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
   [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_ELSE]          = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_FALSE]         = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_FALSE]         = {literal,  NULL,   PREC_NONE},
   [TOKEN_FOR]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_FUN]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_IF]            = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_NIL]           = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_NIL]           = {literal,  NULL,   PREC_NONE},
   [TOKEN_OR]            = {NULL,     NULL,   PREC_NONE},
   [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
   [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_THIS]          = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_TRUE]          = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_TRUE]          = {literal,  NULL,   PREC_NONE},
   [TOKEN_VAR]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_WHILE]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_ERROR]         = {NULL,     NULL,   PREC_NONE},
@@ -110,7 +112,7 @@ static void error_at(Parser* parser, Token* token, const char* message) {
   fprintf(stderr, "[line %zu] Error", token->line);
 
   if (token->type == TOKEN_EOF) {
-    fprintf(stderr, "at end");
+    fprintf(stderr, " at end");
   } else if (token->type == TOKEN_ERROR) {
 
   } else {
@@ -205,7 +207,26 @@ static void expression(Parser* parser) {
 
 static void number(Parser* parser) {
   double value = strtod(parser->previous.start, NULL);
-  emit_constant(parser, value);
+  emit_constant(parser, NUMBER_VAL(value));
+}
+
+static void literal(Parser* parser) {
+  switch (parser->previous.type) {
+    case TOKEN_NIL:
+      emit_byte(parser, OP_NIL);
+      break;
+
+    case TOKEN_TRUE:
+      emit_byte(parser, OP_TRUE);
+      break;
+
+    case TOKEN_FALSE:
+      emit_byte(parser, OP_FALSE);
+      break;
+
+    default: // Unreachable
+      return;
+  }
 }
 
 static void grouping(Parser* parser) {
@@ -223,6 +244,10 @@ static void unary(Parser* parser) {
       emit_byte(parser, OP_NEGATE);
       break;
 
+    case TOKEN_BANG:
+      emit_byte(parser, OP_NOT);
+      break;
+
     default:
       return; // Unreachable
   }
@@ -234,10 +259,18 @@ static void binary(Parser* parser) {
   parse_precedence(parser, (Precedence)(rule->precedence + 1));
 
   switch (op_type) {
+    case TOKEN_BANG_EQUAL:    emit_bytes(parser, OP_EQUAL, OP_NOT); break;
+    case TOKEN_EQUAL_EQUAL:   emit_byte(parser, OP_EQUAL); break;
+    case TOKEN_GREATER:       emit_byte(parser, OP_GREATER); break;
+    case TOKEN_GREATER_EQUAL: emit_bytes(parser, OP_LESS, OP_NOT); break;
+    case TOKEN_LESS:          emit_byte(parser, OP_LESS); break;
+    case TOKEN_LESS_EQUAL:    emit_bytes(parser, OP_GREATER, OP_NOT); break;
+
     case TOKEN_PLUS:  emit_byte(parser, OP_ADD); break;
     case TOKEN_MINUS: emit_byte(parser, OP_SUB); break;
     case TOKEN_STAR:  emit_byte(parser, OP_MUL); break;
     case TOKEN_SLASH: emit_byte(parser, OP_DIV); break;
+
     default: return; // Unreachable
   }
 }

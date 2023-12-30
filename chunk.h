@@ -8,12 +8,21 @@ typedef enum {
   OP_LOAD_CONST,
   OP_LOAD_CONST_LONG,
 
+  OP_NIL,
+  OP_TRUE,
+  OP_FALSE,
+
   OP_NEGATE,
+
+  OP_EQUAL,
+  OP_GREATER,
+  OP_LESS,
 
   OP_ADD,
   OP_SUB,
   OP_MUL,
   OP_DIV,
+  OP_NOT,
 
   OP_RETURN,
 } OpCode;

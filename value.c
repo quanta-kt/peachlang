@@ -4,7 +4,23 @@
 #include <stdio.h>
 
 void Value_print(Value value) {
-  printf("%g", value);
+  switch (value.type) {
+    case VAL_NIL: printf("nil"); break;
+    case VAL_BOOL: printf(AS_BOOL(value) ? "true" : "false"); break;
+    case VAL_NUMBER: printf("%g", AS_NUMBER(value)); break;
+    default: printf("unkown value type");
+  }
+}
+
+bool Value_equals(Value value, Value other) {
+  if (value.type != other.type) return false;
+
+  switch (value.type) {
+    case VAL_NIL:    return true;
+    case VAL_BOOL:   return AS_BOOL(value) == AS_BOOL(other);
+    case VAL_NUMBER: return AS_NUMBER(value) == AS_NUMBER(other);
+    default:         return false;
+  }
 }
 
 void ValueArray_init(ValueArray* array) {

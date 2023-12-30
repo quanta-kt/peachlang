@@ -6,13 +6,15 @@
 #include "debug.h"
 
 #include <stdio.h>
+#include <stdarg.h>
 
 VM vm;
 
+static bool is_falsey(Value value);
+static void runtime_error(VM* vm, const char* fmt, ...);
 static void push(Value value);
-
 static Value pop();
-
+static Value peek(size_t depth);
 static void reset_stack();
 
 void VM_init() {
@@ -31,12 +33,17 @@ static InterpretResult run() {
       | (READ_BYTE() << 16) \
     ])
   
-  #define BINARY_OP(op) \
+  #define BINARY_OP(type_value, op) \
     do { \
-      double b = pop(); \
-      double a = pop(); \
-      push(a op b); \
-    } while(false) \
+      \
+      if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) { \
+        runtime_error(&vm, "Operands must be numbers."); \
+      } \
+      \
+      double b = AS_NUMBER(pop()); \
+      double a = AS_NUMBER(pop()); \
+      push(type_value(a op b)); \
+    } while(false)
 
   for (;;) {
     #ifdef DEBUG_TRACE_EXECUTION
@@ -72,15 +79,33 @@ static InterpretResult run() {
         break;
       }
 
-      case OP_NEGATE: {
-        push(-pop());
+      case OP_NIL:   push(NIL_VAL); break;
+      case OP_FALSE: push(BOOL_VAL(false)); break;
+      case OP_TRUE:  push(BOOL_VAL(true)); break;
+
+      case OP_EQUAL: {
+        Value a = pop();
+        Value b = pop();
+        push(BOOL_VAL(Value_equals(a, b)));
+        break;
+      }
+      case OP_GREATER: BINARY_OP(BOOL_VAL, >); break;
+      case OP_LESS:    BINARY_OP(BOOL_VAL, <); break;
+
+      case OP_NEGATE: { 
+        if (!IS_NUMBER(peek(0))) {
+          runtime_error(&vm, "Operand must be a number.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+        push(NUMBER_VAL(-AS_NUMBER(pop())));
         break;
       }
 
-      case OP_ADD: BINARY_OP(+); break;
-      case OP_SUB: BINARY_OP(-); break;
-      case OP_MUL: BINARY_OP(*); break;
-      case OP_DIV: BINARY_OP(/); break;
+      case OP_ADD: BINARY_OP(NUMBER_VAL, +); break;
+      case OP_SUB: BINARY_OP(NUMBER_VAL, -); break;
+      case OP_MUL: BINARY_OP(NUMBER_VAL, *); break;
+      case OP_DIV: BINARY_OP(NUMBER_VAL, /); break;
+      case OP_NOT: push(BOOL_VAL(is_falsey(pop()))); break;
     }
   }
 
@@ -109,6 +134,23 @@ InterpretResult VM_interpret(const char *source) {
 
 void VM_free() {}
 
+static bool is_falsey(Value value) {
+  return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+}
+
+static void runtime_error(VM* vm, const char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+
+  size_t instruction = vm->ip - vm->chunk->code - 1;
+  size_t line = Chunk_get_line(vm->chunk, instruction);
+  fprintf(stderr, "[line %zu] in script\n", line);
+
+  reset_stack();
+}
+
 static void push(Value value) {
   *vm.stack_top = value;
   vm.stack_top++;
@@ -117,6 +159,10 @@ static void push(Value value) {
 static Value pop() {
   vm.stack_top--;
   return *vm.stack_top;
+}
+
+static Value peek(size_t depth) {
+  return vm.stack_top[-1 - depth];
 }
 
 static void reset_stack() {
