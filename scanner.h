@@ -36,7 +36,7 @@ typedef struct {
 
 void Scanner_init(Scanner* scanner, const char* source);
 
-Token Scanner_scan_token(Scanner* scanner, const char* source);
+Token Scanner_scan_token(Scanner* scanner);
 
 #endif // !peach_scanner_h
 

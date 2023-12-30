@@ -30,9 +30,7 @@ typedef enum {
 
 void VM_init();
 
-InterpretResult VM_interpret_source(const char* source);
-
-InterpretResult VM_interpret(Chunk* chunk);
+InterpretResult VM_interpret(const char* source);
 
 void VM_free();
 

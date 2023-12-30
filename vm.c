@@ -89,15 +89,22 @@ static InterpretResult run() {
   #undef READ_CONSTANT_LONG
 }
 
-InterpretResult VM_interpret_source(const char *source) {
-  compile(source);
-  return INTERPRET_OK;
-}
+InterpretResult VM_interpret(const char *source) {
+  Chunk chunk;
+  Chunk_init(&chunk);
 
-InterpretResult VM_interpret(Chunk* chunk) {
-  vm.chunk = chunk;
+  if (!compile(source, &chunk)) {
+    Chunk_free(&chunk);
+    return INTERPRET_COMPILE_ERROR;
+  }
+
+  vm.chunk = &chunk;
   vm.ip = vm.chunk->code;
-  return run();
+
+  InterpretResult result = run();
+
+  Chunk_free(&chunk);
+  return result;
 }
 
 void VM_free() {}

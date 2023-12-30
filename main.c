@@ -6,11 +6,6 @@
 #include "vm.h"
 #include "compiler.h"
 
-static InterpretResult interpret(const char* code) {
-  compile(code);
-  return INTERPRET_OK;
-}
-
 static void repl() {
   char line[1024];
 
@@ -25,7 +20,7 @@ static void repl() {
     break;
   }
 
-  interpret(line);
+  VM_interpret(line);
 }
 
 static char* read_file(const char* path) {
@@ -61,7 +56,7 @@ static char* read_file(const char* path) {
 
 static void run_file(const char* path) {
   char* source = read_file(path);
-  InterpretResult result = interpret(source);
+  InterpretResult result = VM_interpret(source);
   free(source);
 
   if (result == INTERPRET_COMPILE_ERROR) exit(65);

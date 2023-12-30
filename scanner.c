@@ -41,7 +41,7 @@ void Scanner_init(Scanner *scanner, const char* source) {
   scanner->line = 1;
 }
 
-Token Scanner_scan_token(Scanner *scanner, const char *source) {
+Token Scanner_scan_token(Scanner *scanner) {
   skip_whitesapce(scanner);
 
   scanner->start = scanner->current;
