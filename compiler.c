@@ -237,7 +237,7 @@ static void binary(Parser* parser) {
     case TOKEN_PLUS:  emit_byte(parser, OP_ADD); break;
     case TOKEN_MINUS: emit_byte(parser, OP_SUB); break;
     case TOKEN_STAR:  emit_byte(parser, OP_MUL); break;
-    case TOKEN_SLASH: emit_byte(parser, OP_SUB); break;
+    case TOKEN_SLASH: emit_byte(parser, OP_DIV); break;
     default: return; // Unreachable
   }
 }
