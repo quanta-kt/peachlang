@@ -1,15 +1,19 @@
 #include "chunk.h"
 #include "common.h"
 #include "compiler.h"
+#include "memory.h"
+#include "object.h"
 #include "value.h"
 #include "vm.h" 
 #include "debug.h"
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 VM vm;
 
+static void concatenate();
 static bool is_falsey(Value value);
 static void runtime_error(VM* vm, const char* fmt, ...);
 static void push(Value value);
@@ -101,7 +105,18 @@ static InterpretResult run() {
         break;
       }
 
-      case OP_ADD: BINARY_OP(NUMBER_VAL, +); break;
+      case OP_ADD: {
+        if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
+          concatenate();
+        } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
+          BINARY_OP(NUMBER_VAL, +);
+        } else {
+          runtime_error(&vm, "Operands must be two numbers or two strings.");
+          return INTERPRET_RUNTIME_ERROR;
+        }
+
+        break;
+      }
       case OP_SUB: BINARY_OP(NUMBER_VAL, -); break;
       case OP_MUL: BINARY_OP(NUMBER_VAL, *); break;
       case OP_DIV: BINARY_OP(NUMBER_VAL, /); break;
@@ -133,6 +148,20 @@ InterpretResult VM_interpret(const char *source) {
 }
 
 void VM_free() {}
+
+static void concatenate() {
+  ObjectString* b = AS_STRING(pop());
+  ObjectString* a = AS_STRING(pop());
+  size_t length = a->length + b->length;
+
+  char* chars = ALLOCATE(char, length + 1);
+  memcpy(chars, a->chars, a->length);
+  memcpy(chars + a->length, b->chars, b->length);
+  chars[length] = '\0';
+
+  ObjectString* result = ObjectString_create(chars, length);
+  push(OBJECT_VAL(result));
+}
 
 static bool is_falsey(Value value) {
   return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));

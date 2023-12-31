@@ -1,13 +1,16 @@
 #include "memory.h"
 #include "value.h"
+#include "object.h"
 
 #include <stdio.h>
+#include <string.h>
 
 void Value_print(Value value) {
   switch (value.type) {
     case VAL_NIL: printf("nil"); break;
     case VAL_BOOL: printf(AS_BOOL(value) ? "true" : "false"); break;
     case VAL_NUMBER: printf("%g", AS_NUMBER(value)); break;
+    case VAL_OBJECT: Object_print(value); break;
     default: printf("unkown value type");
   }
 }
@@ -19,6 +22,11 @@ bool Value_equals(Value value, Value other) {
     case VAL_NIL:    return true;
     case VAL_BOOL:   return AS_BOOL(value) == AS_BOOL(other);
     case VAL_NUMBER: return AS_NUMBER(value) == AS_NUMBER(other);
+    case VAL_OBJECT: {
+      ObjectString* a = AS_STRING(value);
+      ObjectString* b = AS_STRING(other);
+      return a->length == b->length && memcmp(a->chars, b->chars, a->length) == 0;
+    }
     default:         return false;
   }
 }

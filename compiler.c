@@ -7,6 +7,7 @@
 #include "debug.h"
 #include "scanner.h"
 #include "value.h"
+#include "object.h"
 
 
 typedef struct {
@@ -49,6 +50,7 @@ static void grouping(Parser* parser);
 static void unary(Parser* parser);
 static void number(Parser* parser);
 static void literal(Parser* parser);
+static void string(Parser* parser);
 
 ParseRule rules[] = {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
@@ -71,7 +73,7 @@ ParseRule rules[] = {
   [TOKEN_LESS]          = {NULL,     binary, PREC_COMPARISON},
   [TOKEN_LESS_EQUAL]    = {NULL,     binary, PREC_COMPARISON},
   [TOKEN_IDENTIFIER]    = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_STRING]        = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_STRING]        = {string,   NULL,   PREC_NONE},
   [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
   [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
@@ -273,6 +275,12 @@ static void binary(Parser* parser) {
 
     default: return; // Unreachable
   }
+}
+
+static void string(Parser* parser) {
+  ObjectString* str = ObjectString_from_cstring(parser->previous.start + 1, parser->previous.length - 2);
+  Value value = OBJECT_VAL(str);
+  emit_constant(parser, value);
 }
 
 bool compile(const char* source, Chunk* chunk) {
