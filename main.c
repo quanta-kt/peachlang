@@ -6,7 +6,7 @@
 #include "vm.h"
 #include "compiler.h"
 
-static void repl() {
+static void repl(VM* vm) {
   char line[1024];
 
   for (;;) {
@@ -20,7 +20,7 @@ static void repl() {
     break;
   }
 
-  VM_interpret(line);
+  VM_interpret(vm, line);
 }
 
 static char* read_file(const char* path) {
@@ -54,9 +54,9 @@ static char* read_file(const char* path) {
   return buffer;
 }
 
-static void run_file(const char* path) {
+static void run_file(VM* vm, const char* path) {
   char* source = read_file(path);
-  InterpretResult result = VM_interpret(source);
+  InterpretResult result = VM_interpret(vm, source);
   free(source);
 
   if (result == INTERPRET_COMPILE_ERROR) exit(65);
@@ -64,17 +64,18 @@ static void run_file(const char* path) {
 }
 
 int main(int argc, char *argv[]) {
-  VM_init();
+  VM vm;
+  VM_init(&vm);
 
   if (argc == 1) {
-    repl();
+    repl(&vm);
   } else if (argc == 2) {
-    run_file(argv[1]);
+    run_file(&vm, argv[1]);
   } else {
     fprintf(stderr, "Usage: peach [path]\n");
   }
 
-  VM_free();
+  VM_free(&vm);
 
   return 0;
 }

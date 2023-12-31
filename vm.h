@@ -28,11 +28,11 @@ typedef enum {
   INTERPRET_RUNTIME_ERROR,
 } InterpretResult;
 
-void VM_init();
+void VM_init(VM* vm);
 
-InterpretResult VM_interpret(const char* source);
+InterpretResult VM_interpret(VM* vm, const char* source);
 
-void VM_free();
+void VM_free(VM* vm);
 
 #endif // !peach_vm_h
 
