@@ -19,6 +19,8 @@ typedef struct {
   Token previous;
   bool had_error;
   bool panic_mode;
+
+  VM* vm;
 } Parser;
 
 typedef enum {
@@ -278,12 +280,12 @@ static void binary(Parser* parser) {
 }
 
 static void string(Parser* parser) {
-  ObjectString* str = ObjectString_from_cstring(parser->previous.start + 1, parser->previous.length - 2);
+  ObjectString* str = ObjectString_from_cstring(parser->vm, parser->previous.start + 1, parser->previous.length - 2);
   Value value = OBJECT_VAL(str);
   emit_constant(parser, value);
 }
 
-bool compile(const char* source, Chunk* chunk) {
+bool compile(VM* vm, const char* source, Chunk* chunk) {
   Scanner scanner;
   Scanner_init(&scanner, source);
 

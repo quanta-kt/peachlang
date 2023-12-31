@@ -8,28 +8,28 @@
 #include "vm.h"
 
 
-#define ALLOCATE_OBJECT(type, object_type) \
-  (type*) Object_create(sizeof(type), object_type)
+#define ALLOCATE_OBJECT(type, object_type, vm) \
+  (type*) Object_create(vm, sizeof(type), object_type)
 
 
-static Object* Object_create(size_t size, ObjectType type) {
+static Object* Object_create(VM* vm, size_t size, ObjectType type) {
   Object* object = (Object*) reallocate(NULL, 0, size);
   object->type = type;
   return object;
 }
 
-ObjectString* ObjectString_create(char* chars, size_t length) {
-  ObjectString* string = ALLOCATE_OBJECT(ObjectString, OBJ_STRING);
+ObjectString* ObjectString_create(VM* vm, char* chars, size_t length) {
+  ObjectString* string = ALLOCATE_OBJECT(ObjectString, OBJ_STRING, vm);
   string->length = length;
   string->chars = chars;
   return string;
 }
 
-ObjectString* ObjectString_from_cstring(const char* chars, size_t length) {
+ObjectString* ObjectString_from_cstring(VM* vm, const char* chars, size_t length) {
   char* heap_chars = ALLOCATE(char, length + 1);
   memcpy(heap_chars, chars, length);
   heap_chars[length] = '\0';
-  return ObjectString_create(heap_chars, length);
+  return ObjectString_create(vm, heap_chars, length);
 }
 
 void Object_print(Value value) {

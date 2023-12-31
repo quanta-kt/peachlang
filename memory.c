@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "memory.h"
+#include "object.h"
 
 void * reallocate(void* pointer, size_t old_size, size_t new_size) {
   if (new_size == 0) {
@@ -17,3 +18,24 @@ void * reallocate(void* pointer, size_t old_size, size_t new_size) {
 
   return result;
 }
+
+void free_objects(Object *head) {
+  Object* object = head;
+
+  while (object != NULL) {
+    Object* next = object->next;
+    free_object(object);
+    object = next;
+  }
+}
+
+void free_object(Object* object) {
+  switch (object->type) {
+    case OBJ_STRING: {
+      ObjectString* str = (ObjectString*) object;
+      FREE_ARRAY(char, str->chars, str->length + 1);
+      FREE(ObjectString, object);
+    }
+  }
+}
+

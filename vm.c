@@ -21,6 +21,7 @@ static void reset_stack(VM* vm);
 
 void VM_init(VM* vm) {
   reset_stack(vm);
+  vm->objects = NULL;
 }
 
 static InterpretResult run(VM* vm) {
@@ -131,7 +132,7 @@ InterpretResult VM_interpret(VM* vm, const char *source) {
   Chunk chunk;
   Chunk_init(&chunk);
 
-  if (!compile(source, &chunk)) {
+  if (!compile(vm, source, &chunk)) {
     Chunk_free(&chunk);
     return INTERPRET_COMPILE_ERROR;
   }
@@ -145,7 +146,9 @@ InterpretResult VM_interpret(VM* vm, const char *source) {
   return result;
 }
 
-void VM_free(VM* vm) {}
+void VM_free(VM* vm) {
+  free_objects(vm->objects);
+}
 
 static void concatenate(VM* vm) {
   ObjectString* b = AS_STRING(pop(vm));
@@ -157,7 +160,7 @@ static void concatenate(VM* vm) {
   memcpy(chars + a->length, b->chars, b->length);
   chars[length] = '\0';
 
-  ObjectString* result = ObjectString_create(chars, length);
+  ObjectString* result = ObjectString_create(vm, chars, length);
   push(vm, OBJECT_VAL(result));
 }
 

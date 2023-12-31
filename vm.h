@@ -20,6 +20,8 @@ typedef struct {
   // containing the top value on the stack
   // i.e top + 1
   Value* stack_top;
+
+  Object* objects;
 } VM;
 
 typedef enum {

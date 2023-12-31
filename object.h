@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "value.h"
+#include "vm.h"
 
 typedef enum {
   OBJ_STRING,
@@ -10,6 +11,7 @@ typedef enum {
 
 struct Object {
   ObjectType type;
+  struct Object* next;
 };
 
 struct ObjectString {
@@ -31,8 +33,8 @@ static inline bool is_object_type(Value value, ObjectType type) {
 
 void Object_print(Value value);
 
-ObjectString* ObjectString_from_cstring(const char* chars, size_t length);
-ObjectString* ObjectString_create(char* chars, size_t length);
+ObjectString* ObjectString_from_cstring(VM* vm, const char* chars, size_t length);
+ObjectString* ObjectString_create(VM* vm, char* chars, size_t length);
 
 #endif // !peach_object_h
 
