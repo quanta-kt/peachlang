@@ -17,7 +17,7 @@ struct Object {
 struct ObjectString {
   Object object;
   size_t length;
-  char* chars;
+  char chars[];
 };
 
 #define OBJECT_TYPE(value) (AS_OBJECT(value)->type)
@@ -34,7 +34,7 @@ static inline bool is_object_type(Value value, ObjectType type) {
 void Object_print(Value value);
 
 ObjectString* ObjectString_from_cstring(VM* vm, const char* chars, size_t length);
-ObjectString* ObjectString_create(VM* vm, char* chars, size_t length);
+ObjectString* ObjectString_create(VM* vm, size_t length);
 
 #endif // !peach_object_h
 

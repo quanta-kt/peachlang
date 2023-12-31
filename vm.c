@@ -155,13 +155,13 @@ static void concatenate(VM* vm) {
   ObjectString* a = AS_STRING(pop(vm));
   size_t length = a->length + b->length;
 
-  char* chars = ALLOCATE(char, length + 1);
-  memcpy(chars, a->chars, a->length);
-  memcpy(chars + a->length, b->chars, b->length);
-  chars[length] = '\0';
+  ObjectString* str = ObjectString_create(vm, length);
 
-  ObjectString* result = ObjectString_create(vm, chars, length);
-  push(vm, OBJECT_VAL(result));
+  memcpy(str->chars, a->chars, a->length);
+  memcpy(str->chars + a->length, b->chars, b->length);
+  str->chars[length] = '\0';
+
+  push(vm, OBJECT_VAL(str));
 }
 
 static bool is_falsey(Value value) {

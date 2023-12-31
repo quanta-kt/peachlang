@@ -18,18 +18,20 @@ static Object* Object_create(VM* vm, size_t size, ObjectType type) {
   return object;
 }
 
-ObjectString* ObjectString_create(VM* vm, char* chars, size_t length) {
-  ObjectString* string = ALLOCATE_OBJECT(ObjectString, OBJ_STRING, vm);
+ObjectString* ObjectString_create(VM* vm, size_t length) {
+  size_t size = sizeof(ObjectString) + length + 1;
+  ObjectString* string = (ObjectString*) Object_create(vm, size, OBJ_STRING);
   string->length = length;
-  string->chars = chars;
   return string;
 }
 
 ObjectString* ObjectString_from_cstring(VM* vm, const char* chars, size_t length) {
-  char* heap_chars = ALLOCATE(char, length + 1);
-  memcpy(heap_chars, chars, length);
-  heap_chars[length] = '\0';
-  return ObjectString_create(vm, heap_chars, length);
+  ObjectString* str = ObjectString_create(vm, length);
+
+  memcpy(str->chars, chars, length);
+  str->chars[length] = '\0';
+
+  return str;
 }
 
 void Object_print(Value value) {
