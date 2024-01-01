@@ -121,7 +121,7 @@ static void error_at(Parser* parser, Token* token, const char* message) {
   } else if (token->type == TOKEN_ERROR) {
 
   } else {
-    fprintf(stderr, "at '%*.s'", (int) token->length, token->start);
+    fprintf(stderr, "at '%.*s'", (int) token->length, token->start);
   }
 
   fprintf(stderr, ": %s\n", message);
