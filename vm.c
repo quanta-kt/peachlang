@@ -3,6 +3,7 @@
 #include "compiler.h"
 #include "memory.h"
 #include "object.h"
+#include "table.h"
 #include "value.h"
 #include "vm.h" 
 #include "debug.h"
@@ -20,6 +21,7 @@ static Value peek(VM* vm, size_t depth);
 static void reset_stack(VM* vm);
 
 void VM_init(VM* vm) {
+  Table_init(&vm->strings);
   reset_stack(vm);
   vm->objects = NULL;
 }
@@ -146,7 +148,40 @@ InterpretResult VM_interpret(VM* vm, const char *source) {
   return result;
 }
 
+bool VM_get_intern_str(VM* vm, const char* chars, size_t length, ObjectString** dest) {
+  uint32_t hash = string_hash(chars, length);
+
+  ObjectString* str = Table_find_str(&vm->strings, chars, length);
+  bool create = str == NULL;
+
+  if (create) {
+    str = ObjectString_copy(chars, length);
+    Table_set(&vm->strings, str, NIL_VAL);
+  }
+
+  *dest = str;
+  return create;
+}
+
+bool VM_get_intern_str_take(VM* vm, char* chars, size_t length, ObjectString** dest) {
+  uint32_t hash = string_hash(chars, length);
+
+  ObjectString* str = Table_find_str(&vm->strings, chars, length);
+  bool create = str == NULL;
+
+  if (create) {
+    str = ObjectString_take(chars, length);
+    Table_set(&vm->strings, str, NIL_VAL);
+  } else {
+    FREE_ARRAY(char, chars, length + 1);
+  }
+
+  *dest = str;
+  return create;
+}
+
 void VM_free(VM* vm) {
+  Table_free(&vm->strings);
   free_objects(vm->objects);
 }
 
@@ -155,13 +190,15 @@ static void concatenate(VM* vm) {
   ObjectString* a = AS_STRING(pop(vm));
   size_t length = a->length + b->length;
 
-  ObjectString* str = ObjectString_create(vm, length);
+  char* str = ALLOCATE(char, length + 1);
 
-  memcpy(str->chars, a->chars, a->length);
-  memcpy(str->chars + a->length, b->chars, b->length);
-  str->chars[length] = '\0';
+  memcpy(str, a->chars, a->length);
+  memcpy(str + a->length, b->chars, b->length);
+  str[length] = '\0';
 
-  push(vm, OBJECT_VAL(str));
+  ObjectString* dest;
+  VM_get_intern_str_take(vm, str, length, &dest);
+  push(vm, OBJECT_VAL(dest));
 }
 
 static bool is_falsey(Value value) {

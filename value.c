@@ -22,11 +22,7 @@ bool Value_equals(Value value, Value other) {
     case VAL_NIL:    return true;
     case VAL_BOOL:   return AS_BOOL(value) == AS_BOOL(other);
     case VAL_NUMBER: return AS_NUMBER(value) == AS_NUMBER(other);
-    case VAL_OBJECT: {
-      ObjectString* a = AS_STRING(value);
-      ObjectString* b = AS_STRING(other);
-      return a->length == b->length && memcmp(a->chars, b->chars, a->length) == 0;
-    }
+    case VAL_OBJECT: return AS_STRING(value) == AS_STRING(other);
     default:         return false;
   }
 }

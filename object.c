@@ -12,26 +12,40 @@
   (type*) Object_create(vm, sizeof(type), object_type)
 
 
-static Object* Object_create(VM* vm, size_t size, ObjectType type) {
+static Object* Object_create(size_t size, ObjectType type) {
   Object* object = (Object*) reallocate(NULL, 0, size);
   object->type = type;
   return object;
 }
 
-ObjectString* ObjectString_create(VM* vm, size_t length) {
-  size_t size = sizeof(ObjectString) + length + 1;
-  ObjectString* string = (ObjectString*) Object_create(vm, size, OBJ_STRING);
+uint32_t string_hash(const char* str, size_t length) {
+  uint32_t hash = 2166136261u;
+
+  for (size_t i = 0; i < length; i++) {
+    hash ^= (uint32_t) str[i];
+    hash *= 16777619;
+  }
+
+  return hash;
+}
+
+ObjectString* ObjectString_take(char* chars, size_t length) {
+  ObjectString* string = (ObjectString*) Object_create(sizeof(ObjectString), OBJ_STRING);
   string->length = length;
+  string->chars = chars;
+  string->hash = string_hash(chars, length);
+
   return string;
 }
 
-ObjectString* ObjectString_from_cstring(VM* vm, const char* chars, size_t length) {
-  ObjectString* str = ObjectString_create(vm, length);
+ObjectString* ObjectString_copy(const char* chars, size_t length) {
+  uint32_t hash = string_hash(chars, length);
+  char* buffer = ALLOCATE(char, length + 1);
 
-  memcpy(str->chars, chars, length);
-  str->chars[length] = '\0';
+  memcpy(buffer, chars, length);
+  buffer[length] = '\0';
 
-  return str;
+  return ObjectString_take(buffer, length);
 }
 
 void Object_print(Value value) {
@@ -39,3 +53,4 @@ void Object_print(Value value) {
     case OBJ_STRING: printf("%s", AS_CSTRING(value)); break;
   }
 }
+

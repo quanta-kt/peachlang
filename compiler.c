@@ -8,6 +8,7 @@
 #include "scanner.h"
 #include "value.h"
 #include "object.h"
+#include "vm.h"
 
 
 typedef struct {
@@ -280,7 +281,9 @@ static void binary(Parser* parser) {
 }
 
 static void string(Parser* parser) {
-  ObjectString* str = ObjectString_from_cstring(parser->vm, parser->previous.start + 1, parser->previous.length - 2);
+  ObjectString* str;
+  VM_get_intern_str(parser->vm, parser->previous.start + 1, parser->previous.length - 2, &str);
+
   Value value = OBJECT_VAL(str);
   emit_constant(parser, value);
 }
@@ -294,7 +297,8 @@ bool compile(VM* vm, const char* source, Chunk* chunk) {
     .compiling_chunk = chunk,
     .had_error = false,
     .panic_mode = false,
-    .source = source
+    .source = source,
+    .vm = vm,
   };
 
   Parser_advance(&parser);

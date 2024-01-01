@@ -17,7 +17,8 @@ struct Object {
 struct ObjectString {
   Object object;
   size_t length;
-  char chars[];
+  uint32_t hash;
+  char* chars;
 };
 
 #define OBJECT_TYPE(value) (AS_OBJECT(value)->type)
@@ -33,8 +34,26 @@ static inline bool is_object_type(Value value, ObjectType type) {
 
 void Object_print(Value value);
 
-ObjectString* ObjectString_from_cstring(VM* vm, const char* chars, size_t length);
-ObjectString* ObjectString_create(VM* vm, size_t length);
+
+/**
+ * Allocates an ObjectString object.
+ *
+ * This function does NOT initialize the string, add it to interned string table
+ * or the hash -- the caller is responsible for doing so.
+ */
+ObjectString* ObjectString_create();
+
+/**
+ * Allocates an ObjectString Object and takes the ownership of the given C-string.
+ */
+ObjectString* ObjectString_take(char* chars, size_t length);
+
+/**
+ * Allocates an ObjectString object and initializes it with the given C-string.
+ */
+ObjectString* ObjectString_copy(const char* chars, size_t length);
+
+uint32_t string_hash(const char* str, size_t length);
 
 #endif // !peach_object_h
 
