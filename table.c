@@ -96,7 +96,6 @@ ObjectString* Table_find_str(Table* table, const char* str, size_t length) {
 
   uint32_t hash = string_hash(str, length);
   uint32_t index = hash % table->capacity;
-  Entry* tombstone = NULL;
 
   for (;;) {
     Entry* entry = &table->entries[index];
@@ -104,7 +103,11 @@ ObjectString* Table_find_str(Table* table, const char* str, size_t length) {
     if (entry->key == NULL) {
       if (IS_NIL(entry->value)) return NULL;
     } else {
-      if (entry->key->length == length && entry->key->hash == hash && memcmp(entry->key->chars, str, length)) {
+      if (
+        entry->key->length == length &&
+        entry->key->hash == hash &&
+        memcmp(entry->key->chars, str, length) == 0
+      ) {
         return entry->key;
       }
     }
@@ -156,6 +159,8 @@ static void adjust_capacity(Table* table, size_t capacity) {
     Entry* dest = find_entry(entries, capacity, entry->key);
     dest->key = entry->key;
     dest->value = entry->value;
+
+    table->count++;
   }
 
   // free original array
