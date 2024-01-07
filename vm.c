@@ -21,6 +21,7 @@ static Value peek(VM* vm, size_t depth);
 static void reset_stack(VM* vm);
 
 void VM_init(VM* vm) {
+  Table_init(&vm->globals);
   Table_init(&vm->strings);
   reset_stack(vm);
   vm->objects = NULL;
@@ -28,7 +29,6 @@ void VM_init(VM* vm) {
 
 static InterpretResult run(VM* vm) {
   #define READ_BYTE() (*(vm->ip++))
-
   #define READ_CONSTANT() (vm->chunk->constants.values[READ_BYTE()])
 
   #define READ_CONSTANT_LONG() ( \
@@ -66,10 +66,82 @@ static InterpretResult run(VM* vm) {
     uint8_t instruction;
 
     switch (instruction = READ_BYTE()) {
-      case OP_RETURN: {
+      case OP_PRINT: {
         Value_print(pop(vm));
-        printf("\n");
+        break;
+      }
+
+      case OP_POP: {
+        pop(vm);
+        break;
+      }
+
+      case OP_RETURN: {
         return INTERPRET_OK;
+      }
+
+      case OP_DEF_GLOBAL: {
+        ObjectString* name = AS_STRING(READ_CONSTANT());
+        Table_set(&vm->globals, name, peek(vm, 0));
+        pop(vm);
+        break;
+      }
+
+      case OP_DEF_GLOBAL_LONG: {
+        ObjectString* name = AS_STRING(READ_CONSTANT_LONG());
+        Table_set(&vm->globals, name, peek(vm, 0));
+        pop(vm);
+        break;
+      }
+
+      case OP_GET_GLOBAL: {
+        ObjectString* name = AS_STRING(READ_CONSTANT());
+        Value value;
+
+        if (!Table_get(&vm->globals, name, &value)) {
+          runtime_error(vm, "Undefined variable '%s'.", name->chars);
+          return INTERPRET_RUNTIME_ERROR;
+        }
+
+        push(vm, value);
+        break;
+      }
+
+      case OP_GET_GLOBAL_LONG: {
+        ObjectString* name = AS_STRING(READ_CONSTANT_LONG());
+        Value value;
+
+        if (!Table_get(&vm->globals, name, &value)) {
+          runtime_error(vm, "Undefined variable '%s'.", name->chars);
+          return INTERPRET_RUNTIME_ERROR;
+        }
+
+        push(vm, value);
+        break;
+      }
+
+      case OP_SET_GLOBAL: {
+        ObjectString* name = AS_STRING(READ_CONSTANT());
+
+        if (Table_set(&vm->globals, name, peek(vm, 0))) {
+          Table_delete(&vm->globals, name);
+          runtime_error(vm, "Undefined variable '%s'.", name->chars);
+          return INTERPRET_RUNTIME_ERROR;
+        }
+
+        break;
+      }
+
+      case OP_SET_GLOBAL_LONG: {
+        ObjectString* name = AS_STRING(READ_CONSTANT_LONG());
+
+        if (Table_set(&vm->globals, name, peek(vm, 0))) {
+          Table_delete(&vm->globals, name);
+          runtime_error(vm, "Undefined variable '%s'.", name->chars);
+          return INTERPRET_RUNTIME_ERROR;
+        }
+
+        break;
       }
 
       case OP_LOAD_CONST: {
@@ -182,6 +254,7 @@ bool VM_get_intern_str_take(VM* vm, char* chars, size_t length, ObjectString** d
 
 void VM_free(VM* vm) {
   Table_free(&vm->strings);
+  Table_free(&vm->globals);
   free_objects(vm->objects);
 }
 
@@ -210,6 +283,8 @@ static void runtime_error(VM* vm, const char* fmt, ...) {
   va_start(args, fmt);
   vfprintf(stderr, fmt, args);
   va_end(args);
+
+  putchar('\n');
 
   size_t instruction = vm->ip - vm->chunk->code - 1;
   size_t line = Chunk_get_line(vm->chunk, instruction);

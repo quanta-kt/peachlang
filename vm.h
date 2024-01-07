@@ -22,9 +22,12 @@ typedef struct {
   // i.e top + 1
   Value* stack_top;
 
+  Table globals;
+
   Object* objects;
 
   Table strings;
+
 } VM;
 
 typedef enum {

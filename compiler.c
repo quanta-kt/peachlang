@@ -38,7 +38,7 @@ typedef enum {
   PREC_PRIMARY,
 } Precedence;
 
-typedef void (*ParseFn)(Parser*);
+typedef void (*ParseFn)(Parser*, bool);
 
 typedef struct {
   ParseFn prefix;
@@ -46,14 +46,25 @@ typedef struct {
   Precedence precedence;
 } ParseRule;
 
+static void binary(Parser* parser, bool can_assign);
+static void grouping(Parser* parser, bool can_assign);
+static void unary(Parser* parser, bool can_assign);
+static void number(Parser* parser, bool can_assign);
+static void literal(Parser* parser, bool can_assign);
+static void string(Parser* parser, bool can_assign);
+static void variable(Parser* parser, bool can_assign);
 
 static void expression(Parser* parser);
-static void binary(Parser* parser);
-static void grouping(Parser* parser);
-static void unary(Parser* parser);
-static void number(Parser* parser);
-static void literal(Parser* parser);
-static void string(Parser* parser);
+static void declaration(Parser* parser);
+static void statement(Parser* parser);
+static void print_statement(Parser* parser);
+static void expression_statement(Parser* parser);
+static void var_declaration(Parser* parser);
+
+static void named_variable(Parser* parser, Token name, bool can_assign);
+static size_t identifier_constant(Parser* parser, Token name);
+static size_t parse_variable(Parser* parser, const char* err);
+void define_variable(Parser* parser, size_t global);
 
 ParseRule rules[] = {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
@@ -75,7 +86,7 @@ ParseRule rules[] = {
   [TOKEN_GREATER_EQUAL] = {NULL,     binary, PREC_COMPARISON},
   [TOKEN_LESS]          = {NULL,     binary, PREC_COMPARISON},
   [TOKEN_LESS_EQUAL]    = {NULL,     binary, PREC_COMPARISON},
-  [TOKEN_IDENTIFIER]    = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_IDENTIFIER]    = {variable, NULL,   PREC_NONE},
   [TOKEN_STRING]        = {string,   NULL,   PREC_NONE},
   [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
   [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
@@ -100,7 +111,11 @@ ParseRule rules[] = {
 
 
 static void Parser_advance(Parser* parser);
+static bool Parser_check(Parser* parser, TokenType type);
+static bool Parser_match(Parser* parser, TokenType type);
 static void Parser_consume(Parser* parser, TokenType type, const char* message);
+static void Parser_synchronize(Parser* parser);
+
 static void parse_precedence(Parser* parser, Precedence precedence);
 
 static ParseRule* get_rule(TokenType type);
@@ -121,7 +136,7 @@ static void error_at(Parser* parser, Token* token, const char* message) {
   } else if (token->type == TOKEN_ERROR) {
 
   } else {
-    fprintf(stderr, "at '%.*s'", (int) token->length, token->start);
+    fprintf(stderr, " at '%.*s'", (int) token->length, token->start);
   }
 
   fprintf(stderr, ": %s\n", message);
@@ -147,6 +162,16 @@ static void Parser_advance(Parser* parser) {
   }
 }
 
+static bool Parser_check(Parser* parser, TokenType type) {
+  return parser->current.type == type;
+}
+
+static bool Parser_match(Parser* parser, TokenType type) {
+  if (!Parser_check(parser, type)) return false;
+  Parser_advance(parser);
+  return true;
+}
+
 static void Parser_consume(Parser* parser, TokenType type, const char* message) {
   if (parser->current.type == type) {
     Parser_advance(parser);
@@ -169,6 +194,21 @@ static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2) {
   emit_byte(parser, byte2);
 }
 
+/**
+ * Emit bytes for constants addressing.
+ * Emits `short_op` if `addr` can be packed as a single byte operand.
+ * Otherwise, uses long_op and splits `addr` into multi-byte operand.
+ */
+static void emit_addr_bytes(Parser* parser, uint8_t short_op, uint8_t long_op, size_t addr) {
+  if (addr <= 0xff) {
+    emit_bytes(parser, short_op, addr);
+    return;
+  }
+
+  emit_bytes(parser, long_op, (addr >>  0) & 0xff);
+  emit_bytes(parser, (addr >>  8) & 0xff, (addr >> 16) & 0xff);
+}
+
 static void emit_constant(Parser* parser, Value value) {
   Chunk_write_constant(current_chunk(parser), value, parser->previous.line);
 }
@@ -183,7 +223,6 @@ static void end_compiler(Parser* parser) {
   #endif
 }
 
-
 static ParseRule* get_rule(TokenType type) {
   return &rules[type];
 }
@@ -197,12 +236,17 @@ static void parse_precedence(Parser* parser, Precedence precedence) {
     return;
   }
 
-  prefix_rule(parser);
+  bool can_assign = precedence <= PREC_ASSIGNMENT;
+  prefix_rule(parser, can_assign);
 
   while (precedence <= get_rule(parser->current.type)->precedence) {
     Parser_advance(parser);
     ParseFn infix_rule = get_rule(parser->previous.type)->infix;
-    infix_rule(parser);
+    infix_rule(parser, can_assign);
+  }
+
+  if (can_assign && Parser_match(parser, TOKEN_EQUAL)) {
+    error(parser, "Invalid assignment target.");
   }
 }
 
@@ -210,12 +254,12 @@ static void expression(Parser* parser) {
   parse_precedence(parser, PREC_ASSIGNMENT);
 }
 
-static void number(Parser* parser) {
+static void number(Parser* parser, bool can_assign) {
   double value = strtod(parser->previous.start, NULL);
   emit_constant(parser, NUMBER_VAL(value));
 }
 
-static void literal(Parser* parser) {
+static void literal(Parser* parser, bool can_assign) {
   switch (parser->previous.type) {
     case TOKEN_NIL:
       emit_byte(parser, OP_NIL);
@@ -234,12 +278,12 @@ static void literal(Parser* parser) {
   }
 }
 
-static void grouping(Parser* parser) {
+static void grouping(Parser* parser, bool can_assign) {
   expression(parser);
   Parser_consume(parser, TOKEN_RIGHT_PAREN, "Expect ')'");
 }
 
-static void unary(Parser* parser) {
+static void unary(Parser* parser, bool can_assign) {
   TokenType op_type = parser->previous.type;
 
   parse_precedence(parser, PREC_UNARY);
@@ -258,7 +302,7 @@ static void unary(Parser* parser) {
   }
 }
 
-static void binary(Parser* parser) {
+static void binary(Parser* parser, bool can_assign) {
   TokenType op_type = parser->previous.type;
   ParseRule* rule = get_rule(op_type);
   parse_precedence(parser, (Precedence)(rule->precedence + 1));
@@ -280,12 +324,110 @@ static void binary(Parser* parser) {
   }
 }
 
-static void string(Parser* parser) {
+static void string(Parser* parser, bool can_assign) {
   ObjectString* str;
   VM_get_intern_str(parser->vm, parser->previous.start + 1, parser->previous.length - 2, &str);
 
   Value value = OBJECT_VAL(str);
   emit_constant(parser, value);
+}
+
+static void variable(Parser* parser, bool can_assign) {
+  named_variable(parser, parser->previous, can_assign);
+}
+
+static void named_variable(Parser* parser, Token name, bool can_assign) {
+  size_t addr = identifier_constant(parser, name);
+
+  if (can_assign && Parser_match(parser, TOKEN_EQUAL)) {
+    expression(parser);
+    emit_addr_bytes(parser, OP_SET_GLOBAL, OP_SET_GLOBAL_LONG, addr);
+  } else {
+    emit_addr_bytes(parser, OP_GET_GLOBAL, OP_GET_GLOBAL_LONG, addr);
+  }
+}
+
+static void print_statement(Parser* parser) {
+  expression(parser);
+  Parser_consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
+  emit_byte(parser, OP_PRINT);
+}
+
+static void expression_statement(Parser* parser) {
+  expression(parser);
+  Parser_consume(parser, TOKEN_SEMICOLON, "Expect ';' after expression.");
+  emit_byte(parser, OP_POP);
+}
+
+static void statement(Parser* parser) {
+  if (Parser_match(parser, TOKEN_PRINT)) {
+    print_statement(parser);
+  } else {
+    expression_statement(parser);
+  }
+}
+
+static void declaration(Parser* parser) {
+  if (Parser_match(parser, TOKEN_VAR)) {
+    var_declaration(parser);
+  } else {
+    statement(parser);
+  }
+
+  if (parser->panic_mode) Parser_synchronize(parser);
+}
+
+static void var_declaration(Parser* parser) {
+  size_t global = parse_variable(parser, "Expect variable name.");
+
+  if (Parser_match(parser, TOKEN_EQUAL)) {
+    expression(parser);
+  } else {
+    emit_byte(parser, OP_NIL);
+  }
+
+  Parser_consume(parser, TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
+
+  define_variable(parser, global);
+}
+
+void define_variable(Parser* parser, size_t global) {
+  emit_addr_bytes(parser, OP_DEF_GLOBAL, OP_DEF_GLOBAL_LONG, global);
+}
+
+static size_t identifier_constant(Parser* parser, Token name) {
+  ObjectString* str;
+  VM_get_intern_str(parser->vm, name.start, name.length, &str);
+  return Chunk_add_constant(parser->compiling_chunk, OBJECT_VAL(str));
+}
+
+static size_t parse_variable(Parser* parser, const char* err) {
+  Parser_consume(parser, TOKEN_IDENTIFIER, err);
+  return identifier_constant(parser, parser->previous);
+}
+
+static void Parser_synchronize(Parser* parser) {
+  parser->panic_mode = false;
+
+  while (parser->current.type != EOF) {
+    if (parser->previous.type == TOKEN_SEMICOLON) return;
+
+    switch (parser->current.type) {
+      case TOKEN_CLASS:
+      case TOKEN_FUN:
+      case TOKEN_VAR:
+      case TOKEN_FOR:
+      case TOKEN_IF:
+      case TOKEN_WHILE:
+      case TOKEN_PRINT:
+      case TOKEN_RETURN:
+        return;
+
+      default: ;  // noop
+    }
+
+    Parser_advance(parser);
+  }
 }
 
 bool compile(VM* vm, const char* source, Chunk* chunk) {
@@ -302,8 +444,10 @@ bool compile(VM* vm, const char* source, Chunk* chunk) {
   };
 
   Parser_advance(&parser);
-  expression(&parser);
-  Parser_consume(&parser, TOKEN_EOF, "Expect end of expression.");
+
+  while (!Parser_match(&parser, TOKEN_EOF)) {
+    declaration(&parser);
+  }
 
   end_compiler(&parser);
 

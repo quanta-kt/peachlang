@@ -7,6 +7,12 @@
 typedef enum {
   OP_LOAD_CONST,
   OP_LOAD_CONST_LONG,
+  OP_DEF_GLOBAL,
+  OP_DEF_GLOBAL_LONG,
+  OP_GET_GLOBAL,
+  OP_GET_GLOBAL_LONG,
+  OP_SET_GLOBAL,
+  OP_SET_GLOBAL_LONG,
 
   OP_NIL,
   OP_TRUE,
@@ -24,6 +30,8 @@ typedef enum {
   OP_DIV,
   OP_NOT,
 
+  OP_POP,
+  OP_PRINT,
   OP_RETURN,
 } OpCode;
 
