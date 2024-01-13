@@ -66,6 +66,25 @@ static size_t identifier_constant(Parser* parser, Token name);
 static size_t parse_variable(Parser* parser, const char* err);
 void define_variable(Parser* parser, size_t global);
 
+static void parse_precedence(Parser* parser, Precedence precedence);
+
+static void emit_byte(Parser* parser, uint8_t byte);
+static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2);
+static void emit_return(Parser* parser);
+static void emit_addr_bytes(Parser* parser, uint8_t short_op, uint8_t long_op, size_t addr);
+static void emit_constant(Parser* parser, Value value);
+static void end_compiler(Parser* parser);
+
+static void Parser_advance(Parser* parser);
+static bool Parser_check(Parser* parser, TokenType type);
+static bool Parser_match(Parser* parser, TokenType type);
+static void Parser_consume(Parser* parser, TokenType type, const char* message);
+static void Parser_synchronize(Parser* parser);
+
+static void error_at(Parser* parser, Token* token, const char* message);
+static void error_at_current(Parser* parser, const char* message);
+static void error(Parser* parser, const char* message);
+
 ParseRule rules[] = {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
   [TOKEN_RIGHT_PAREN]   = {NULL,     NULL,   PREC_NONE},
@@ -110,16 +129,7 @@ ParseRule rules[] = {
 };
 
 
-static void Parser_advance(Parser* parser);
-static bool Parser_check(Parser* parser, TokenType type);
-static bool Parser_match(Parser* parser, TokenType type);
-static void Parser_consume(Parser* parser, TokenType type, const char* message);
-static void Parser_synchronize(Parser* parser);
-
-static void parse_precedence(Parser* parser, Precedence precedence);
-
 static ParseRule* get_rule(TokenType type);
-
 
 static Chunk* current_chunk(Parser* parser) {
   return parser->compiling_chunk;
@@ -185,13 +195,13 @@ static void emit_byte(Parser* parser, uint8_t byte) {
   Chunk_write(current_chunk(parser), byte, parser->previous.line);
 }
 
-static void emit_return(Parser* parser) {
-  emit_byte(parser, OP_RETURN);
-}
-
 static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2) {
   emit_byte(parser, byte1);
   emit_byte(parser, byte2);
+}
+
+static void emit_return(Parser* parser) {
+  emit_byte(parser, OP_RETURN);
 }
 
 /**
