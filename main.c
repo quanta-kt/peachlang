@@ -17,10 +17,8 @@ static void repl(VM* vm) {
       break;
     }
 
-    break;
+    VM_interpret(vm, line);
   }
-
-  VM_interpret(vm, line);
 }
 
 static char* read_file(const char* path) {
