@@ -28,7 +28,7 @@ static char advance(Scanner* scanner);
 
 static bool match(Scanner* scanner, char expected);
 
-static void skip_whitesapce(Scanner* scanner);
+static void skip_whitespace(Scanner* scanner);
 
 static char peek(Scanner* scanner);
 
@@ -42,7 +42,7 @@ void Scanner_init(Scanner *scanner, const char* source) {
 }
 
 Token Scanner_scan_token(Scanner *scanner) {
-  skip_whitesapce(scanner);
+  skip_whitespace(scanner);
 
   scanner->start = scanner->current;
 
@@ -223,7 +223,7 @@ static char peek_next(Scanner* scanner) {
   return scanner->current[1];
 }
 
-static void skip_whitesapce(Scanner* scanner) {
+static void skip_whitespace(Scanner* scanner) {
   for (;;) {
     char c = peek(scanner);
 
