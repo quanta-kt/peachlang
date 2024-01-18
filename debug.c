@@ -3,10 +3,13 @@
 #include "chunk.h"
 #include "debug.h"
 
+static size_t simple_instruction(const char* name, int offset);
+static size_t byte_instruction(const char* name, const Chunk* chunk, int offset);
+static size_t long_instruction(const char* name, const Chunk* chunk, int offset);
 static size_t constant_instruction(const char* name, const Chunk* chunk, const size_t offset);
 static size_t constant_long_instruction(const char* name, const Chunk* chunk, const size_t offset);
-static size_t simple_instruction(const char* name, int offset);
 
+// TODO: Remove this
 void disassemble_chunk(Chunk *chunk, const char *name) {
   printf("== %s ==\n", name);
 
@@ -45,6 +48,15 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
       return constant_instruction("OP_SET_GLOBAL", chunk, offset);
     case OP_SET_GLOBAL_LONG:
       return constant_long_instruction("OP_SET_GLOBAL_LONG", chunk, offset);
+
+    case OP_GET_LOCAL:
+      return byte_instruction("OP_GET_LOCAL", chunk, offset); 
+    case OP_GET_LOCAL_LONG:
+      return long_instruction("OP_GET_LOCAL_LONG", chunk, offset); 
+    case OP_SET_LOCAL:
+      return byte_instruction("OP_SET_LOCAL", chunk, offset); 
+    case OP_SET_LOCAL_LONG:
+      return long_instruction("OP_SET_LOCAL_LONG", chunk, offset); 
 
     case OP_NIL:
       return simple_instruction("OP_NIL", offset);
@@ -88,6 +100,22 @@ static size_t simple_instruction(const char* name, int offset) {
   return offset + 1;
 }
 
+static size_t byte_instruction(const char* name, const Chunk* chunk, int offset) {
+  uint8_t slot = chunk->code[offset + 1];
+  printf("%-16s %4d\n", name, slot);
+  return offset + 2;
+}
+
+static size_t long_instruction(const char* name, const Chunk* chunk, int offset) {
+  uint8_t a = chunk->code[offset + 1];
+  uint8_t b = chunk->code[offset + 2];
+  uint8_t c = chunk->code[offset + 3];
+  uint32_t slot = a | (b << 8) | (c << 16);
+
+  printf("%-16s %4u\n", name, slot);
+  return offset + 4;
+}
+
 static size_t constant_instruction(const char* name, const Chunk* chunk, const size_t offset) {
   uint8_t constant = chunk->code[offset + 1];
   printf("%-16s %4d '", name, constant);
@@ -102,7 +130,7 @@ static size_t constant_long_instruction(const char* name, const Chunk* chunk, co
   const uint8_t b = chunk->code[offset + 2];
   const uint8_t c = chunk->code[offset + 3];
 
-  const uint32_t constant = a | (b << 8) | (c << 8);
+  const uint32_t constant = a | (b << 8) | (c << 16);
 
   printf("%-16s %4u '", name, constant);
   Value_print(chunk->constants.values[constant]);

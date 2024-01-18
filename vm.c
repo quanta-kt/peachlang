@@ -29,14 +29,16 @@ void VM_init(VM* vm) {
 
 static InterpretResult run(VM* vm) {
   #define READ_BYTE() (*(vm->ip++))
-  #define READ_CONSTANT() (vm->chunk->constants.values[READ_BYTE()])
 
+  #define READ_LONG() ( \
+    READ_BYTE() \
+    | (READ_BYTE() << 8) \
+    | (READ_BYTE() << 16) \
+  )
+
+  #define READ_CONSTANT() (vm->chunk->constants.values[READ_BYTE()])
   #define READ_CONSTANT_LONG() ( \
-    vm->chunk->constants.values[ \
-      READ_BYTE() \
-      | (READ_BYTE() << 8) \
-      | (READ_BYTE() << 16) \
-    ])
+    vm->chunk->constants.values[READ_LONG()])
   
   #define BINARY_OP(type_value, op) \
     do { \
@@ -141,6 +143,27 @@ static InterpretResult run(VM* vm) {
           return INTERPRET_RUNTIME_ERROR;
         }
 
+        break;
+      }
+
+      case OP_GET_LOCAL: {
+        size_t slot = READ_BYTE();
+        push(vm, vm->stack[slot]);
+        break;
+      }
+      case OP_GET_LOCAL_LONG: {
+        size_t slot = READ_LONG();
+        push(vm, vm->stack[slot]);
+        break;
+      }
+      case OP_SET_LOCAL: {
+        size_t slot = READ_BYTE();
+        vm->stack[slot] = peek(vm, 0);
+        break;
+      }
+      case OP_SET_LOCAL_LONG: {
+        size_t slot = READ_LONG();
+        vm->stack[slot] = peek(vm, 0);
         break;
       }
 

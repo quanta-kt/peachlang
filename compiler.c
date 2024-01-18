@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "chunk.h"
 #include "common.h"
@@ -12,6 +13,17 @@
 
 
 typedef struct {
+  Token name;
+  int depth;
+} Local;
+
+typedef struct {
+  Local locals[UINT8_COUNT];
+  size_t local_count;
+  int scope_depth;
+} Compiler;
+
+typedef struct {
   Scanner* scanner;
   Chunk* compiling_chunk;
   const char* source;
@@ -22,6 +34,8 @@ typedef struct {
   bool panic_mode;
 
   VM* vm;
+
+  Compiler* current_compiler;
 } Parser;
 
 typedef enum {
@@ -57,6 +71,7 @@ static void variable(Parser* parser, bool can_assign);
 static void expression(Parser* parser);
 static void declaration(Parser* parser);
 static void statement(Parser* parser);
+static void block(Parser* parser);
 static void print_statement(Parser* parser);
 static void expression_statement(Parser* parser);
 static void var_declaration(Parser* parser);
@@ -64,7 +79,12 @@ static void var_declaration(Parser* parser);
 static void named_variable(Parser* parser, Token name, bool can_assign);
 static size_t identifier_constant(Parser* parser, Token name);
 static size_t parse_variable(Parser* parser, const char* err);
-void define_variable(Parser* parser, size_t global);
+static void define_variable(Parser* parser, size_t global);
+static void declare_variable(Parser* parser);
+static void add_local(Parser* parser, Token name);
+static bool identifier_equals(Token* const a, Token* const b);
+static int resolve_local(Parser* parser, Token* name);
+static void mark_initialized(Parser* parser);
 
 static void parse_precedence(Parser* parser, Precedence precedence);
 
@@ -74,6 +94,8 @@ static void emit_return(Parser* parser);
 static void emit_addr_bytes(Parser* parser, uint8_t short_op, uint8_t long_op, size_t addr);
 static void emit_constant(Parser* parser, Value value);
 static void end_compiler(Parser* parser);
+static void begin_scope(Parser* parser);
+static void end_scope(Parser* parser);
 
 static void Parser_advance(Parser* parser);
 static bool Parser_check(Parser* parser, TokenType type);
@@ -84,6 +106,8 @@ static void Parser_synchronize(Parser* parser);
 static void error_at(Parser* parser, Token* token, const char* message);
 static void error_at_current(Parser* parser, const char* message);
 static void error(Parser* parser, const char* message);
+
+static void Compiler_init(Compiler* compiler, Parser* parser);
 
 ParseRule rules[] = {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
@@ -233,6 +257,24 @@ static void end_compiler(Parser* parser) {
   #endif
 }
 
+static void begin_scope(Parser* parser) {
+  parser->current_compiler->scope_depth++;
+}
+
+static void end_scope(Parser* parser) {
+  parser->current_compiler->scope_depth--;
+
+  Compiler* const compiler = parser->current_compiler;
+
+  // pop out all the variables in the scope
+  while (
+    compiler->local_count > 0 &&
+    compiler->locals[compiler->local_count - 1].depth > compiler->scope_depth) {
+      emit_byte(parser, OP_POP);
+      compiler->local_count--;
+  }
+}
+
 static ParseRule* get_rule(TokenType type) {
   return &rules[type];
 }
@@ -347,20 +389,60 @@ static void variable(Parser* parser, bool can_assign) {
 }
 
 static void named_variable(Parser* parser, Token name, bool can_assign) {
-  size_t addr = identifier_constant(parser, name);
+  uint8_t get_op, get_op_long, set_op, set_op_long;
+  int addr = resolve_local(parser, &name);
+
+  if (addr != -1) {
+    get_op = OP_GET_LOCAL;
+    get_op_long = OP_GET_LOCAL_LONG;
+    set_op = OP_SET_LOCAL;
+    set_op_long = OP_SET_LOCAL_LONG;
+  } else {
+    addr = identifier_constant(parser, name);
+    get_op = OP_GET_GLOBAL;
+    get_op_long = OP_GET_GLOBAL_LONG;
+    set_op = OP_SET_GLOBAL;
+    set_op_long = OP_SET_GLOBAL_LONG;
+  }
+
 
   if (can_assign && Parser_match(parser, TOKEN_EQUAL)) {
     expression(parser);
-    emit_addr_bytes(parser, OP_SET_GLOBAL, OP_SET_GLOBAL_LONG, addr);
+    emit_addr_bytes(parser, set_op, set_op_long, addr);
   } else {
-    emit_addr_bytes(parser, OP_GET_GLOBAL, OP_GET_GLOBAL_LONG, addr);
+    emit_addr_bytes(parser, get_op, get_op_long, addr);
   }
+}
+
+static int resolve_local(Parser* parser, Token* name) {
+  Compiler* compiler = parser->current_compiler;
+
+  for (size_t i = compiler->local_count - 1; i >= 0; i--) {
+    Local* const local = &compiler->locals[i];
+
+    if (identifier_equals(name, &local->name)) {
+      if (local->depth == -1) {
+        error(parser, "Can't read local variable in its own initializer.");
+      }
+      return i;
+    }
+  }
+
+  return -1;
 }
 
 static void print_statement(Parser* parser) {
   expression(parser);
   Parser_consume(parser, TOKEN_SEMICOLON, "Expect ';' after value.");
   emit_byte(parser, OP_PRINT);
+}
+
+static void block(Parser* parser) {
+  while (!Parser_check(parser, TOKEN_RIGHT_BRACE) && !Parser_check(parser, TOKEN_EOF)) {
+    declaration(parser);
+  }
+
+  Parser_consume(parser, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
 static void expression_statement(Parser* parser) {
@@ -372,6 +454,10 @@ static void expression_statement(Parser* parser) {
 static void statement(Parser* parser) {
   if (Parser_match(parser, TOKEN_PRINT)) {
     print_statement(parser);
+  } else if (Parser_match(parser, TOKEN_LEFT_BRACE)) {
+    begin_scope(parser);
+    block(parser);
+    end_scope(parser);
   } else {
     expression_statement(parser);
   }
@@ -401,7 +487,59 @@ static void var_declaration(Parser* parser) {
   define_variable(parser, global);
 }
 
+static void declare_variable(Parser* parser) {
+  if (parser->current_compiler->scope_depth == 0) return;
+
+  Token* name = &parser->previous;
+
+  // Re-declaration is prohibited in the same scope
+  // while shadowing is allowed.
+  for (size_t i = parser->current_compiler->local_count - 1; i > 0; i--) {
+    Local* local = &parser->current_compiler->locals[i];
+
+    if (local->depth != -1 && local->depth < parser->current_compiler->scope_depth) {
+      break;
+    }
+
+    if (identifier_equals(name, &local->name)) {
+      error(parser, "Already a variable with name in this scope");
+      return;
+    } 
+  }
+
+  add_local(parser, *name);
+}
+
+static bool identifier_equals(Token* const a, Token* const b) {
+  if (a->length != b->length) return false;
+  return memcmp(a->start, b->start, a->length) == 0;
+}
+
+static void add_local(Parser* parser, Token name) {
+  Compiler* const compiler = parser->current_compiler;
+
+  if (compiler->local_count == UINT8_COUNT) {
+    error(parser, "Too many local variables in function.");
+    return;
+  }
+
+  Local* local = &compiler->locals[compiler->local_count++];
+  local->name = name;
+  local->depth = -1;
+}
+
+static void mark_initialized(Parser* parser) {
+  size_t inx = parser->current_compiler->local_count - 1;
+  Compiler* compiler = parser->current_compiler;
+  compiler->locals[inx].depth = compiler->scope_depth;
+}
+
 void define_variable(Parser* parser, size_t global) {
+  if (parser->current_compiler->scope_depth > 0) {
+    mark_initialized(parser);
+    return;
+  }
+
   emit_addr_bytes(parser, OP_DEF_GLOBAL, OP_DEF_GLOBAL_LONG, global);
 }
 
@@ -413,6 +551,10 @@ static size_t identifier_constant(Parser* parser, Token name) {
 
 static size_t parse_variable(Parser* parser, const char* err) {
   Parser_consume(parser, TOKEN_IDENTIFIER, err);
+
+  declare_variable(parser);
+  if (parser->current_compiler->scope_depth > 0) return 0;
+
   return identifier_constant(parser, parser->previous);
 }
 
@@ -440,6 +582,12 @@ static void Parser_synchronize(Parser* parser) {
   }
 }
 
+void Compiler_init(Compiler* compiler, Parser* parser) {
+  compiler->local_count = 0;
+  compiler->scope_depth = 0;
+  parser->current_compiler = compiler;
+}
+
 bool compile(VM* vm, const char* source, Chunk* chunk) {
   Scanner scanner;
   Scanner_init(&scanner, source);
@@ -451,7 +599,11 @@ bool compile(VM* vm, const char* source, Chunk* chunk) {
     .panic_mode = false,
     .source = source,
     .vm = vm,
+    .current_compiler = NULL,
   };
+
+  Compiler compiler;
+  Compiler_init(&compiler, &parser);
 
   Parser_advance(&parser);
 
