@@ -9,7 +9,6 @@ static size_t long_instruction(const char* name, const Chunk* chunk, int offset)
 static size_t constant_instruction(const char* name, const Chunk* chunk, const size_t offset);
 static size_t constant_long_instruction(const char* name, const Chunk* chunk, const size_t offset);
 
-// TODO: Remove this
 void disassemble_chunk(Chunk *chunk, const char *name) {
   printf("== %s ==\n", name);
 

@@ -10,6 +10,7 @@
 #include "value.h"
 #include "object.h"
 #include "vm.h"
+#include "memory.h"
 
 
 typedef struct {
@@ -18,8 +19,9 @@ typedef struct {
 } Local;
 
 typedef struct {
-  Local locals[UINT8_COUNT];
+  Local* locals;
   size_t local_count;
+  size_t local_capacity;
   int scope_depth;
 } Compiler;
 
@@ -108,6 +110,7 @@ static void error_at_current(Parser* parser, const char* message);
 static void error(Parser* parser, const char* message);
 
 static void Compiler_init(Compiler* compiler, Parser* parser);
+static void Compiler_free(Compiler* compiler);
 
 ParseRule rules[] = {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
@@ -417,6 +420,8 @@ static void named_variable(Parser* parser, Token name, bool can_assign) {
 static int resolve_local(Parser* parser, Token* name) {
   Compiler* compiler = parser->current_compiler;
 
+  if (!compiler->local_count) return -1;
+
   for (size_t i = compiler->local_count - 1; i >= 0; i--) {
     Local* const local = &compiler->locals[i];
 
@@ -494,6 +499,8 @@ static void declare_variable(Parser* parser) {
 
   // Re-declaration is prohibited in the same scope
   // while shadowing is allowed.
+  if (parser->current_compiler->local_count == 0) goto end;
+
   for (size_t i = parser->current_compiler->local_count - 1; i > 0; i--) {
     Local* local = &parser->current_compiler->locals[i];
 
@@ -507,6 +514,7 @@ static void declare_variable(Parser* parser) {
     } 
   }
 
+  end:
   add_local(parser, *name);
 }
 
@@ -518,9 +526,10 @@ static bool identifier_equals(Token* const a, Token* const b) {
 static void add_local(Parser* parser, Token name) {
   Compiler* const compiler = parser->current_compiler;
 
-  if (compiler->local_count == UINT8_COUNT) {
-    error(parser, "Too many local variables in function.");
-    return;
+  if (compiler->local_capacity < compiler->local_count + 1) {
+    size_t old_capacity = compiler->local_capacity;
+    compiler->local_capacity = GROW_CAPACITY(compiler->local_capacity);
+    compiler->locals = GROW_ARRAY(Local, compiler->locals, old_capacity, compiler->local_capacity);
   }
 
   Local* local = &compiler->locals[compiler->local_count++];
@@ -584,8 +593,19 @@ static void Parser_synchronize(Parser* parser) {
 
 void Compiler_init(Compiler* compiler, Parser* parser) {
   compiler->local_count = 0;
+  compiler->local_capacity = 0;
+  compiler->locals = NULL;
+
   compiler->scope_depth = 0;
   parser->current_compiler = compiler;
+}
+
+void Compiler_free(Compiler* compiler) {
+  FREE_ARRAY(Local, compiler->locals, compiler->local_capacity);
+  compiler->local_count = 0;
+  compiler->local_capacity = 0;
+  compiler->locals = NULL;
+  compiler->scope_depth = 0;
 }
 
 bool compile(VM* vm, const char* source, Chunk* chunk) {
@@ -612,6 +632,8 @@ bool compile(VM* vm, const char* source, Chunk* chunk) {
   }
 
   end_compiler(&parser);
+
+  Compiler_free(parser.current_compiler);
 
   return !parser.had_error;
 }
