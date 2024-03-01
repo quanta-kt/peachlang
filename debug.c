@@ -1,11 +1,13 @@
+#include "debug.h"
+
 #include <stdio.h>
 
 #include "chunk.h"
-#include "debug.h"
 
 static size_t simple_instruction(const char* name, int offset);
 static size_t byte_instruction(const char* name, const Chunk* chunk, int offset);
 static size_t long_instruction(const char* name, const Chunk* chunk, int offset);
+static size_t jump_instruction(const char* name, const Chunk* chunk, int sign, int offset);
 static size_t constant_instruction(const char* name, const Chunk* chunk, const size_t offset);
 static size_t constant_long_instruction(const char* name, const Chunk* chunk, const size_t offset);
 
@@ -30,7 +32,7 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
 
   uint8_t instruction = chunk->code[offset];
 
-  switch (instruction) {  
+  switch (instruction) {
     case OP_LOAD_CONST:
       return constant_instruction("OP_LOAD_CONST", chunk, offset);
     case OP_LOAD_CONST_LONG:
@@ -49,13 +51,20 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
       return constant_long_instruction("OP_SET_GLOBAL_LONG", chunk, offset);
 
     case OP_GET_LOCAL:
-      return byte_instruction("OP_GET_LOCAL", chunk, offset); 
+      return byte_instruction("OP_GET_LOCAL", chunk, offset);
     case OP_GET_LOCAL_LONG:
-      return long_instruction("OP_GET_LOCAL_LONG", chunk, offset); 
+      return long_instruction("OP_GET_LOCAL_LONG", chunk, offset);
     case OP_SET_LOCAL:
-      return byte_instruction("OP_SET_LOCAL", chunk, offset); 
+      return byte_instruction("OP_SET_LOCAL", chunk, offset);
     case OP_SET_LOCAL_LONG:
-      return long_instruction("OP_SET_LOCAL_LONG", chunk, offset); 
+      return long_instruction("OP_SET_LOCAL_LONG", chunk, offset);
+
+    case OP_JUMP_IF_FALSE:
+      return jump_instruction("OP_JUMP_IF_FALSE", chunk, 1, offset);
+    case OP_JUMP:
+      return jump_instruction("OP_JUMP", chunk, 1, offset);
+    case OP_LOOP:
+      return jump_instruction("OP_LOOP", chunk, -1, offset);
 
     case OP_NIL:
       return simple_instruction("OP_NIL", offset);
@@ -115,7 +124,18 @@ static size_t long_instruction(const char* name, const Chunk* chunk, int offset)
   return offset + 4;
 }
 
-static size_t constant_instruction(const char* name, const Chunk* chunk, const size_t offset) {
+static size_t jump_instruction(const char* name, const Chunk* chunk,
+                               int sign, int offset) {
+  uint8_t a = chunk->code[offset + 1];
+  uint8_t b = chunk->code[offset + 2];
+  uint16_t jump = a | (b << 8);
+
+  printf("%-16s %4u -> %u\n", name, offset, offset + 3 + sign * jump);
+  return offset + 3;
+}
+
+static size_t constant_instruction(const char* name, const Chunk* chunk,
+                                   const size_t offset) {
   uint8_t constant = chunk->code[offset + 1];
   printf("%-16s %4d '", name, constant);
   Value_print(chunk->constants.values[constant]);
@@ -137,4 +157,3 @@ static size_t constant_long_instruction(const char* name, const Chunk* chunk, co
 
   return offset + 4;
 }
-

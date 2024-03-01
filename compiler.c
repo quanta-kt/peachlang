@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,6 +66,8 @@ typedef struct {
 static void binary(Parser* parser, bool can_assign);
 static void grouping(Parser* parser, bool can_assign);
 static void unary(Parser* parser, bool can_assign);
+static void and_(Parser* parser, bool can_assign);
+static void or_(Parser* parser, bool can_assign);
 static void number(Parser* parser, bool can_assign);
 static void literal(Parser* parser, bool can_assign);
 static void string(Parser* parser, bool can_assign);
@@ -75,6 +78,8 @@ static void declaration(Parser* parser);
 static void statement(Parser* parser);
 static void block(Parser* parser);
 static void print_statement(Parser* parser);
+static void if_statement(Parser* parser);
+static void while_statement(Parser* parser);
 static void expression_statement(Parser* parser);
 static void var_declaration(Parser* parser);
 
@@ -87,6 +92,7 @@ static void add_local(Parser* parser, Token name);
 static bool identifier_equals(Token* const a, Token* const b);
 static int resolve_local(Parser* parser, Token* name);
 static void mark_initialized(Parser* parser);
+static void patch_jump(Parser* parser, size_t offset);
 
 static void parse_precedence(Parser* parser, Precedence precedence);
 
@@ -95,6 +101,7 @@ static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2);
 static void emit_return(Parser* parser);
 static void emit_addr_bytes(Parser* parser, uint8_t short_op, uint8_t long_op, size_t addr);
 static void emit_constant(Parser* parser, Value value);
+static size_t emit_jump(Parser* parser, OpCode op);
 static void end_compiler(Parser* parser);
 static void begin_scope(Parser* parser);
 static void end_scope(Parser* parser);
@@ -135,7 +142,7 @@ ParseRule rules[] = {
   [TOKEN_IDENTIFIER]    = {variable, NULL,   PREC_NONE},
   [TOKEN_STRING]        = {string,   NULL,   PREC_NONE},
   [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
-  [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_AND]           = {NULL,     and_,   PREC_AND},
   [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_ELSE]          = {NULL,     NULL,   PREC_NONE},
   [TOKEN_FALSE]         = {literal,  NULL,   PREC_NONE},
@@ -143,7 +150,7 @@ ParseRule rules[] = {
   [TOKEN_FUN]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_IF]            = {NULL,     NULL,   PREC_NONE},
   [TOKEN_NIL]           = {literal,  NULL,   PREC_NONE},
-  [TOKEN_OR]            = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_OR]            = {NULL,     or_,    PREC_OR},
   [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
   [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
@@ -229,6 +236,16 @@ static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2) {
 
 static void emit_return(Parser* parser) {
   emit_byte(parser, OP_RETURN);
+}
+
+static size_t emit_jump(Parser* parser, OpCode op) {
+  emit_byte(parser, op);
+
+  // emit placeholder location which will be patched later
+  // see: patch_jump
+  emit_byte(parser, 0xff);
+  emit_byte(parser, 0xff);
+  return current_chunk(parser)->count - 2;
 }
 
 /**
@@ -357,6 +374,26 @@ static void unary(Parser* parser, bool can_assign) {
   }
 }
 
+static void and_(Parser* parser, bool can_assign) {
+  size_t end_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+
+  emit_byte(parser, OP_POP);
+  parse_precedence(parser, PREC_AND);
+
+  patch_jump(parser, end_jump);
+}
+
+static void or_(Parser* parser, bool can_assign) {
+  size_t else_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+  size_t end_jump = emit_jump(parser, OP_JUMP);
+
+  patch_jump(parser, else_jump);
+  emit_byte(parser, OP_POP);
+
+  parse_precedence(parser, PREC_OR);
+  patch_jump(parser, end_jump);
+}
+
 static void binary(Parser* parser, bool can_assign) {
   TokenType op_type = parser->previous.type;
   ParseRule* rule = get_rule(op_type);
@@ -442,6 +479,68 @@ static void print_statement(Parser* parser) {
   emit_byte(parser, OP_PRINT);
 }
 
+static void patch_jump(Parser* parser, size_t offset) {
+  // -2 to get past the jump offset itself
+  size_t jump = current_chunk(parser)->count - offset - 2;
+
+  if (jump > UINT16_MAX) {
+    error(parser, "Too much code to jump over.");
+  }
+
+  current_chunk(parser)->code[offset + 0] = (jump >> 0) & 0xff;
+  current_chunk(parser)->code[offset + 1] = (jump >> 8) & 0xff;
+}
+
+static void if_statement(Parser* parser) {
+  Parser_consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+  expression(parser);
+  Parser_consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+  const size_t then_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+  emit_byte(parser, OP_POP);
+  statement(parser);
+
+  size_t else_jump = emit_jump(parser, OP_JUMP);
+
+  patch_jump(parser, then_jump);
+
+  emit_byte(parser, OP_POP);
+  if (Parser_match(parser, TOKEN_ELSE)) {
+    statement(parser);
+  }
+
+  patch_jump(parser, else_jump);
+}
+
+static void emit_loop(Parser* parser, size_t loop_start) {
+  emit_byte(parser, OP_LOOP);
+
+
+  size_t offset = current_chunk(parser)->count - loop_start + 2;
+  if (offset > UINT16_MAX) {
+    error(parser, "Loop body too large");
+  }
+
+  emit_byte(parser, (offset >> 0) & 0xff);
+  emit_byte(parser, (offset >> 8) & 0xff);
+}
+
+static void while_statement(Parser* parser) {
+  const size_t loop_start = current_chunk(parser)->count;
+
+  Parser_consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+  expression(parser);
+  Parser_consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+
+  const size_t exit_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
+  emit_byte(parser, OP_POP);
+  statement(parser);
+  emit_loop(parser, loop_start);
+
+  patch_jump(parser, exit_jump);
+  emit_byte(parser, OP_POP);
+}
+
 static void block(Parser* parser) {
   while (!Parser_check(parser, TOKEN_RIGHT_BRACE) && !Parser_check(parser, TOKEN_EOF)) {
     declaration(parser);
@@ -459,6 +558,10 @@ static void expression_statement(Parser* parser) {
 static void statement(Parser* parser) {
   if (Parser_match(parser, TOKEN_PRINT)) {
     print_statement(parser);
+  } else if (Parser_match(parser, TOKEN_IF)) {
+    if_statement(parser);
+  } else if (Parser_match(parser, TOKEN_WHILE)) {
+    while_statement(parser);
   } else if (Parser_match(parser, TOKEN_LEFT_BRACE)) {
     begin_scope(parser);
     block(parser);

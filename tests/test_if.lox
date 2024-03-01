@@ -1,0 +1,8 @@
+var i = 0;
+var j = 12;
+
+if (i < j) {
+    print "hi";
+}
+
+print "bye";

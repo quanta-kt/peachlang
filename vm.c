@@ -30,6 +30,11 @@ void VM_init(VM* vm) {
 static InterpretResult run(VM* vm) {
   #define READ_BYTE() (*(vm->ip++))
 
+  #define READ_SHORT() ( \
+    READ_BYTE() \
+    | (READ_BYTE() << 8) \
+  )
+
   #define READ_LONG() ( \
     READ_BYTE() \
     | (READ_BYTE() << 8) \
@@ -217,10 +222,29 @@ static InterpretResult run(VM* vm) {
       case OP_MUL: BINARY_OP(NUMBER_VAL, *); break;
       case OP_DIV: BINARY_OP(NUMBER_VAL, /); break;
       case OP_NOT: push(vm, BOOL_VAL(is_falsey(pop(vm)))); break;
+
+      case OP_JUMP_IF_FALSE: {
+        uint16_t offset = READ_SHORT();   
+        if (is_falsey(peek(vm, 0))) vm->ip += offset;
+        break;
+      }
+
+      case OP_JUMP: {
+        uint16_t offset = READ_SHORT();   
+        vm->ip += offset;
+        break;
+      }
+
+      case OP_LOOP: {
+        uint16_t offset = READ_SHORT();
+        vm->ip -= offset;
+        break;
+      }
     }
   }
 
   #undef READ_BYTE
+  #undef READ_SHORT 
   #undef READ_CONSTANT
   #undef READ_CONSTANT_LONG
 }
