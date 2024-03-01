@@ -1,0 +1,8 @@
+let i = 0;
+let j = 12;
+
+if i < j {
+    print "hi";
+}
+
+print "bye";

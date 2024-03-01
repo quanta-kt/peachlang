@@ -114,14 +114,15 @@ static TokenType identifier_type(Scanner* scanner) {
       if (scanner->current - scanner->start > 1) {
         switch (scanner->start[1]) {
           case 'a': return check_keyword(scanner, 2, 3, "lse", TOKEN_FALSE);
+          case 'n': TOKEN_FN;
           case 'o': return check_keyword(scanner, 2, 1, "r",   TOKEN_FOR);
-          case 'u': return check_keyword(scanner, 2, 1, "n",   TOKEN_FUN);
         }
       }
 
       break;
     }
     case 'i': return check_keyword(scanner, 1, 1, "f",     TOKEN_IF);
+    case 'l': return check_keyword(scanner, 1, 2, "et",   TOKEN_LET);
     case 'n': return check_keyword(scanner, 1, 2, "il",    TOKEN_NIL);
     case 'o': return check_keyword(scanner, 1, 1, "r",     TOKEN_OR);
     case 'p': return check_keyword(scanner, 1, 4, "rint",  TOKEN_PRINT);
@@ -137,7 +138,6 @@ static TokenType identifier_type(Scanner* scanner) {
 
       break;
     }
-    case 'v': return check_keyword(scanner, 1, 2, "ar",   TOKEN_VAR);
     case 'w': return check_keyword(scanner, 1, 4, "hile", TOKEN_WHILE);
   }
 

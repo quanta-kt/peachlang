@@ -139,6 +139,7 @@ ParseRule rules[] = {
   [TOKEN_GREATER_EQUAL] = {NULL,     binary, PREC_COMPARISON},
   [TOKEN_LESS]          = {NULL,     binary, PREC_COMPARISON},
   [TOKEN_LESS_EQUAL]    = {NULL,     binary, PREC_COMPARISON},
+  [TOKEN_LET]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_IDENTIFIER]    = {variable, NULL,   PREC_NONE},
   [TOKEN_STRING]        = {string,   NULL,   PREC_NONE},
   [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
@@ -147,7 +148,7 @@ ParseRule rules[] = {
   [TOKEN_ELSE]          = {NULL,     NULL,   PREC_NONE},
   [TOKEN_FALSE]         = {literal,  NULL,   PREC_NONE},
   [TOKEN_FOR]           = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_FUN]           = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_FN]            = {NULL,     NULL,   PREC_NONE},
   [TOKEN_IF]            = {NULL,     NULL,   PREC_NONE},
   [TOKEN_NIL]           = {literal,  NULL,   PREC_NONE},
   [TOKEN_OR]            = {NULL,     or_,    PREC_OR},
@@ -156,7 +157,6 @@ ParseRule rules[] = {
   [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_THIS]          = {NULL,     NULL,   PREC_NONE},
   [TOKEN_TRUE]          = {literal,  NULL,   PREC_NONE},
-  [TOKEN_VAR]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_WHILE]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_ERROR]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_EOF]           = {NULL,     NULL,   PREC_NONE},
@@ -492,13 +492,13 @@ static void patch_jump(Parser* parser, size_t offset) {
 }
 
 static void if_statement(Parser* parser) {
-  Parser_consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
   expression(parser);
-  Parser_consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
   const size_t then_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
   emit_byte(parser, OP_POP);
-  statement(parser);
+
+  Parser_consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after condition.");
+  block(parser);
 
   size_t else_jump = emit_jump(parser, OP_JUMP);
 
@@ -506,7 +506,8 @@ static void if_statement(Parser* parser) {
 
   emit_byte(parser, OP_POP);
   if (Parser_match(parser, TOKEN_ELSE)) {
-    statement(parser);
+    Parser_consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after else.");
+    block(parser);
   }
 
   patch_jump(parser, else_jump);
@@ -528,13 +529,13 @@ static void emit_loop(Parser* parser, size_t loop_start) {
 static void while_statement(Parser* parser) {
   const size_t loop_start = current_chunk(parser)->count;
 
-  Parser_consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
   expression(parser);
-  Parser_consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
   const size_t exit_jump = emit_jump(parser, OP_JUMP_IF_FALSE);
   emit_byte(parser, OP_POP);
-  statement(parser);
+
+  Parser_consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after condition.");
+  block(parser);
   emit_loop(parser, loop_start);
 
   patch_jump(parser, exit_jump);
@@ -572,7 +573,7 @@ static void statement(Parser* parser) {
 }
 
 static void declaration(Parser* parser) {
-  if (Parser_match(parser, TOKEN_VAR)) {
+  if (Parser_match(parser, TOKEN_LET)) {
     var_declaration(parser);
   } else {
     statement(parser);
@@ -678,8 +679,8 @@ static void Parser_synchronize(Parser* parser) {
 
     switch (parser->current.type) {
       case TOKEN_CLASS:
-      case TOKEN_FUN:
-      case TOKEN_VAR:
+      case TOKEN_FN:
+      case TOKEN_LET:
       case TOKEN_FOR:
       case TOKEN_IF:
       case TOKEN_WHILE:
