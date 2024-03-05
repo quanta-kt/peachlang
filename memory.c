@@ -36,6 +36,16 @@ void free_object(Object* object) {
       FREE_ARRAY(char, str->chars, str->length + 1);
       FREE(ObjectString, object);
     }
+    case OBJ_FUNCTION: {
+      ObjectFunction* function = (ObjectFunction*)object;
+      Chunk_free(&function->chunk);
+      FREE(ObjectFunction, object);
+      break;
+    }
+    case OBJ_NATIVE_FN: {
+      FREE(ObjectFunction, object);
+      break;
+    }
   }
 }
 

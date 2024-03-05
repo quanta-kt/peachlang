@@ -3,7 +3,7 @@
 
 #include "vm.h"
 
-bool compile(VM* vm, const char* source, Chunk* chunk);
+ObjectFunction* compile(VM* vm, const char* source);
 
 #endif // !peach_compiler_h
 

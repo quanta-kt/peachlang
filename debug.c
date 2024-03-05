@@ -17,6 +17,8 @@ void disassemble_chunk(Chunk *chunk, const char *name) {
   for (size_t offset = 0; offset < chunk->count;) {
     offset = disassemble_instruction(chunk, offset);
   }
+
+  printf("\n");
 }
 
 size_t disassemble_instruction(Chunk* chunk, size_t offset) {
@@ -96,6 +98,9 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
       return simple_instruction("OP_PRINT", offset);
     case OP_POP:
       return simple_instruction("OP_POP", offset);
+    
+    case OP_CALL:
+      return byte_instruction("OP_CALL", chunk, offset);
 
     default:
       printf("Unknown opcode: %d\n", instruction);

@@ -1,18 +1,23 @@
 #ifndef peach_vm_h
 #define peach_vm_h
 
+#include "object.h"
 #include "chunk.h"
 #include "value.h"
 #include "table.h"
 
-#define STACK_MAX 1024 
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
 typedef struct {
-  // The code to execute
-  Chunk* chunk;
-
-  // The *next* instruction to interpret
+  ObjectFunction* function;
   uint8_t* ip;
+  Value* slots;
+} CallFrame;
+
+typedef struct {
+  CallFrame frames[FRAMES_MAX];
+  int frame_count;
 
   // The VM stack
   Value stack[STACK_MAX];

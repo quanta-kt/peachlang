@@ -19,16 +19,25 @@ typedef struct {
   int depth;
 } Local;
 
-typedef struct {
+typedef enum {
+  TYPE_FUNCTION,
+  TYPE_SCRIPT
+} FunctionType;
+
+typedef struct Compiler Compiler;
+struct Compiler {
+  Compiler* enclosing;
+  ObjectFunction* function;
+  FunctionType type;
+
   Local* locals;
   size_t local_count;
   size_t local_capacity;
   int scope_depth;
-} Compiler;
+};
 
 typedef struct {
   Scanner* scanner;
-  Chunk* compiling_chunk;
   const char* source;
 
   Token current;
@@ -72,6 +81,7 @@ static void number(Parser* parser, bool can_assign);
 static void literal(Parser* parser, bool can_assign);
 static void string(Parser* parser, bool can_assign);
 static void variable(Parser* parser, bool can_assign);
+static void call(Parser* parser, bool can_assign);
 
 static void expression(Parser* parser);
 static void declaration(Parser* parser);
@@ -81,7 +91,9 @@ static void print_statement(Parser* parser);
 static void if_statement(Parser* parser);
 static void while_statement(Parser* parser);
 static void expression_statement(Parser* parser);
+static void fn_declaration(Parser* parser);
 static void var_declaration(Parser* parser);
+static void return_statement(Parser* parser);
 
 static void named_variable(Parser* parser, Token name, bool can_assign);
 static size_t identifier_constant(Parser* parser, Token name);
@@ -102,7 +114,7 @@ static void emit_return(Parser* parser);
 static void emit_addr_bytes(Parser* parser, uint8_t short_op, uint8_t long_op, size_t addr);
 static void emit_constant(Parser* parser, Value value);
 static size_t emit_jump(Parser* parser, OpCode op);
-static void end_compiler(Parser* parser);
+static ObjectFunction* end_compiler(Parser* parser);
 static void begin_scope(Parser* parser);
 static void end_scope(Parser* parser);
 
@@ -116,11 +128,11 @@ static void error_at(Parser* parser, Token* token, const char* message);
 static void error_at_current(Parser* parser, const char* message);
 static void error(Parser* parser, const char* message);
 
-static void Compiler_init(Compiler* compiler, Parser* parser);
+static void Compiler_init(Compiler* compiler, Parser* parser, FunctionType type);
 static void Compiler_free(Compiler* compiler);
 
 ParseRule rules[] = {
-  [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
+  [TOKEN_LEFT_PAREN]    = {grouping, call,   PREC_CALL},
   [TOKEN_RIGHT_PAREN]   = {NULL,     NULL,   PREC_NONE},
   [TOKEN_LEFT_BRACE]    = {NULL,     NULL,   PREC_NONE}, 
   [TOKEN_RIGHT_BRACE]   = {NULL,     NULL,   PREC_NONE},
@@ -166,7 +178,7 @@ ParseRule rules[] = {
 static ParseRule* get_rule(TokenType type);
 
 static Chunk* current_chunk(Parser* parser) {
-  return parser->compiling_chunk;
+  return &parser->current_compiler->function->chunk; 
 }
 
 static void error_at(Parser* parser, Token* token, const char* message) {
@@ -235,6 +247,7 @@ static void emit_bytes(Parser* parser, uint8_t byte1, uint8_t byte2) {
 }
 
 static void emit_return(Parser* parser) {
+  emit_byte(parser, OP_NIL);
   emit_byte(parser, OP_RETURN);
 }
 
@@ -267,14 +280,23 @@ static void emit_constant(Parser* parser, Value value) {
   Chunk_write_constant(current_chunk(parser), value, parser->previous.line);
 }
 
-static void end_compiler(Parser* parser) {
+static ObjectFunction* end_compiler(Parser* parser) {
   emit_return(parser);
+  ObjectFunction* function = parser->current_compiler->function;
 
   #ifdef DEBUG_PRINT_CODE
   if (!parser->had_error) {
-    disassemble_chunk(current_chunk(parser), "code");
+    disassemble_chunk(current_chunk(parser),
+                      function->name != NULL ? function->name->chars : "code");
   }
   #endif
+
+
+  Compiler* compiler = parser->current_compiler;
+  parser->current_compiler = compiler->enclosing;
+  Compiler_free(compiler);
+
+  return function;
 }
 
 static void begin_scope(Parser* parser) {
@@ -394,6 +416,28 @@ static void or_(Parser* parser, bool can_assign) {
   patch_jump(parser, end_jump);
 }
 
+static uint8_t argument_list(Parser* parser) {
+  uint8_t arg_count = 0;
+  if (!Parser_check(parser, TOKEN_RIGHT_PAREN)) {
+    do {
+      expression(parser);
+
+      if (arg_count == 255) {
+        error(parser, "Can't have more than 255 arguments.");
+      }
+
+      arg_count++;
+    } while (Parser_match(parser, TOKEN_COMMA));
+  }
+  Parser_consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+  return arg_count;
+}
+
+static void call(Parser* parser, bool can_assign) {
+  uint8_t arg_count = argument_list(parser);
+  emit_bytes(parser, OP_CALL, arg_count);
+}
+
 static void binary(Parser* parser, bool can_assign) {
   TokenType op_type = parser->previous.type;
   ParseRule* rule = get_rule(op_type);
@@ -459,7 +503,9 @@ static int resolve_local(Parser* parser, Token* name) {
 
   if (!compiler->local_count) return -1;
 
-  for (size_t i = compiler->local_count - 1; i >= 0; i--) {
+  size_t i = compiler->local_count - 1;
+
+  for (;;) {
     Local* const local = &compiler->locals[i];
 
     if (identifier_equals(name, &local->name)) {
@@ -468,9 +514,13 @@ static int resolve_local(Parser* parser, Token* name) {
       }
       return i;
     }
-  }
 
-  return -1;
+    if (i == 0) {
+      return -1;
+    }
+
+    i--;
+  }
 }
 
 static void print_statement(Parser* parser) {
@@ -573,19 +623,74 @@ static void statement(Parser* parser) {
     begin_scope(parser);
     block(parser);
     end_scope(parser);
+  } else if (Parser_match(parser, TOKEN_RETURN)) {
+    return_statement(parser);
   } else {
     expression_statement(parser);
   }
 }
 
 static void declaration(Parser* parser) {
-  if (Parser_match(parser, TOKEN_LET)) {
+  if (Parser_match(parser, TOKEN_FN)) {
+    fn_declaration(parser);
+  } else if (Parser_match(parser, TOKEN_LET)) {
     var_declaration(parser);
   } else {
     statement(parser);
   }
 
   if (parser->panic_mode) Parser_synchronize(parser);
+}
+
+static void return_statement(Parser* parser) {
+  if (parser->current_compiler->type == TYPE_SCRIPT) {
+    error(parser, "Can't return from top-level code.");
+  }
+
+  if (Parser_match(parser, TOKEN_SEMICOLON)) {
+    emit_return(parser);
+  } else {
+    expression(parser);
+    Parser_consume(parser, TOKEN_SEMICOLON, "Expect ';' after return value.");
+    emit_byte(parser, OP_RETURN);
+  }
+}
+
+static void function(Parser* parser, FunctionType type) {
+  Compiler compiler;
+  Compiler_init(&compiler, parser, type);
+  begin_scope(parser); 
+
+  size_t line = parser->current.line;
+
+  Parser_consume(parser, TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+
+  if (!Parser_check(parser, TOKEN_RIGHT_PAREN)) {
+    do {
+      parser->current_compiler->function->arity++;
+
+      if (parser->current_compiler->function->arity > 255) {
+        error_at_current(parser, "Can't have more than 255 parameters.");
+      }
+
+      uint8_t constant = parse_variable(parser, "Expect parameter name.");
+      define_variable(parser, constant);
+    } while (Parser_match(parser, TOKEN_COMMA));
+  }
+
+  Parser_consume(parser, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+  Parser_consume(parser, TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+  block(parser);
+
+  ObjectFunction* function = end_compiler(parser);
+  Chunk_write_constant(current_chunk(parser), OBJECT_VAL(function), line);
+}
+
+static void fn_declaration(Parser* parser) {
+  uint8_t global = parse_variable(parser, "Expect function name.");
+  mark_initialized(parser);
+  function(parser, TYPE_FUNCTION);
+  define_variable(parser, global);
 }
 
 static void var_declaration(Parser* parser) {
@@ -648,8 +753,10 @@ static void add_local(Parser* parser, Token name) {
 }
 
 static void mark_initialized(Parser* parser) {
-  size_t inx = parser->current_compiler->local_count - 1;
   Compiler* compiler = parser->current_compiler;
+  if (compiler->scope_depth == 0) return;
+
+  size_t inx = compiler->local_count - 1;
   compiler->locals[inx].depth = compiler->scope_depth;
 }
 
@@ -665,7 +772,7 @@ void define_variable(Parser* parser, size_t global) {
 static size_t identifier_constant(Parser* parser, Token name) {
   ObjectString* str;
   VM_get_intern_str(parser->vm, name.start, name.length, &str);
-  return Chunk_add_constant(parser->compiling_chunk, OBJECT_VAL(str));
+  return Chunk_add_constant(&parser->current_compiler->function->chunk, OBJECT_VAL(str));
 }
 
 static size_t parse_variable(Parser* parser, const char* err) {
@@ -701,13 +808,29 @@ static void Parser_synchronize(Parser* parser) {
   }
 }
 
-void Compiler_init(Compiler* compiler, Parser* parser) {
-  compiler->local_count = 0;
-  compiler->local_capacity = 0;
-  compiler->locals = NULL;
-
+void Compiler_init(Compiler* compiler, Parser* parser, FunctionType type) {
+  compiler->enclosing = parser->current_compiler;
   compiler->scope_depth = 0;
+  compiler->function = NULL;
+  compiler->type = type;
+
+  compiler->function = ObjectFunction_create();
+
+  compiler->local_count = 1;
+  compiler->local_capacity = 1;
+  compiler->locals = ALLOCATE(Local, compiler->local_capacity);
+
   parser->current_compiler = compiler;
+
+  if (type != TYPE_SCRIPT) {
+    compiler->function->name =
+      ObjectString_copy(parser->previous.start, parser->previous.length);
+  }
+
+  Local* local = &parser->current_compiler->locals[0];
+  local->depth = 0;
+  local->name.start = "";
+  local->name.length = 0;
 }
 
 void Compiler_free(Compiler* compiler) {
@@ -718,13 +841,12 @@ void Compiler_free(Compiler* compiler) {
   compiler->scope_depth = 0;
 }
 
-bool compile(VM* vm, const char* source, Chunk* chunk) {
+ObjectFunction* compile(VM* vm, const char* source) {
   Scanner scanner;
   Scanner_init(&scanner, source);
 
   Parser parser = {
     .scanner = &scanner,
-    .compiling_chunk = chunk,
     .had_error = false,
     .panic_mode = false,
     .source = source,
@@ -733,7 +855,7 @@ bool compile(VM* vm, const char* source, Chunk* chunk) {
   };
 
   Compiler compiler;
-  Compiler_init(&compiler, &parser);
+  Compiler_init(&compiler, &parser, TYPE_SCRIPT);
 
   Parser_advance(&parser);
 
@@ -741,10 +863,8 @@ bool compile(VM* vm, const char* source, Chunk* chunk) {
     declaration(&parser);
   }
 
-  end_compiler(&parser);
+  ObjectFunction* fn = end_compiler(&parser);
 
-  Compiler_free(parser.current_compiler);
-
-  return !parser.had_error;
+  return parser.had_error ? NULL : fn;
 }
 

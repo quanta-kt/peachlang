@@ -1,0 +1,9 @@
+fn sum(start, end) {
+    if (start > end) {
+        return 0;
+    }
+
+    return start + sum(start + 1, end);
+}
+
+print sum(1, 10);
