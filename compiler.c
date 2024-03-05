@@ -498,7 +498,9 @@ static void if_statement(Parser* parser) {
   emit_byte(parser, OP_POP);
 
   Parser_consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after condition.");
+  begin_scope(parser);
   block(parser);
+  end_scope(parser);
 
   size_t else_jump = emit_jump(parser, OP_JUMP);
 
@@ -507,7 +509,9 @@ static void if_statement(Parser* parser) {
   emit_byte(parser, OP_POP);
   if (Parser_match(parser, TOKEN_ELSE)) {
     Parser_consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after else.");
+    begin_scope(parser);
     block(parser);
+    end_scope(parser);
   }
 
   patch_jump(parser, else_jump);
@@ -535,7 +539,9 @@ static void while_statement(Parser* parser) {
   emit_byte(parser, OP_POP);
 
   Parser_consume(parser, TOKEN_LEFT_BRACE, "Expect '{' after condition.");
+  begin_scope(parser);
   block(parser);
+  end_scope(parser);
   emit_loop(parser, loop_start);
 
   patch_jump(parser, exit_jump);
