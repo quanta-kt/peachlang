@@ -60,6 +60,11 @@ static InterpretResult run(VM* vm) {
   for (;;) {
     #ifdef DEBUG_TRACE_EXECUTION
     printf("          ");
+
+    if (vm->stack >= vm->stack_top) {
+      printf("<empty stack>");
+    }
+
     for (Value* slot = vm->stack; slot < vm->stack_top; slot++) {
       printf("[ ");
       Value_print(*slot);
