@@ -54,15 +54,6 @@ static inline bool is_object_type(Value value, ObjectType type) {
 
 void Object_print(Value value);
 
-
-/**
- * Allocates an ObjectString object.
- *
- * This function does NOT initialize the string, add it to interned string table
- * or the hash -- the caller is responsible for doing so.
- */
-ObjectString* ObjectString_create();
-
 /**
  * Allocates an ObjectString Object and takes the ownership of the given C-string.
  */

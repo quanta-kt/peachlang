@@ -28,8 +28,23 @@ uint32_t string_hash(const char* str, size_t length) {
   return hash;
 }
 
+/**
+ * Allocates an ObjectString object.
+ *
+ * This function does NOT initialize the string, add it to interned string table
+ * or the hash -- the caller is responsible for doing so.
+ */
+static ObjectString* ObjectString_create() {
+  ObjectString* string = ALLOCATE_OBJECT(ObjectString, OBJ_STRING); 
+  string->chars = "";
+  string->length = 0;
+  string->hash = 0;
+
+  return string;
+}
+
 ObjectString* ObjectString_take(char* chars, size_t length) {
-  ObjectString* string = (ObjectString*) Object_create(sizeof(ObjectString), OBJ_STRING);
+  ObjectString* string = ObjectString_create();
   string->length = length;
   string->chars = chars;
   string->hash = string_hash(chars, length);
