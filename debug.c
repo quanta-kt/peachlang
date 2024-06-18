@@ -102,6 +102,15 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
     case OP_CALL:
       return byte_instruction("OP_CALL", chunk, offset);
 
+    case OP_CLOSURE: {
+      offset++;
+      uint8_t constant = chunk->code[offset++];
+      printf("%-16s %4d ", "OP_CLOSURE", constant);
+      Value_print(chunk->constants.values[constant]);
+      printf("\n");
+      return offset;
+    }
+
     default:
       printf("Unknown opcode: %d\n", instruction);
       return offset + 1;

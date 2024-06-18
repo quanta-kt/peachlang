@@ -683,7 +683,7 @@ static void function(Parser* parser, FunctionType type) {
   block(parser);
 
   ObjectFunction* function = end_compiler(parser);
-  Chunk_write_constant(current_chunk(parser), OBJECT_VAL(function), line);
+  emit_bytes(parser, OP_CLOSURE, Chunk_add_constant(current_chunk(parser), OBJECT_VAL(function)));
 }
 
 static void fn_declaration(Parser* parser) {

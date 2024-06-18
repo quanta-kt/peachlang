@@ -50,9 +50,9 @@ static InterpretResult run(VM* vm) {
     | (READ_BYTE() << 16) \
   )
 
-  #define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
+  #define READ_CONSTANT() (frame->closure->function->chunk.constants.values[READ_BYTE()])
   #define READ_CONSTANT_LONG() ( \
-    frame->function->chunk.constants.values[READ_LONG()])
+    frame->closure->function->chunk.constants.values[READ_LONG()])
   
   #define BINARY_OP(type_value, op) \
     do { \
@@ -81,7 +81,7 @@ static InterpretResult run(VM* vm) {
     }
     printf("\n");
 
-    disassemble_instruction(&frame->function->chunk, (size_t)(frame->ip - frame->function->chunk.code));
+    disassemble_instruction(&frame->closure->function->chunk, (size_t)(frame->ip - frame->closure->function->chunk.code));
     #endif /* ifdef DEBUG_TRACE_EXECUTION */
 
     uint8_t instruction;
@@ -276,6 +276,13 @@ static InterpretResult run(VM* vm) {
         frame = &vm->frames[vm->frame_count - 1];
         break;
       }
+
+      case OP_CLOSURE: {
+        ObjectFunction* function  = AS_FUNCTION(READ_CONSTANT());
+        ObjectClosure* closure = ObjectClosure_crate(function);
+        push(vm, OBJECT_VAL(closure));
+        break;
+      }
     }
   }
 
@@ -285,7 +292,9 @@ static InterpretResult run(VM* vm) {
   #undef READ_CONSTANT_LONG
 }
 
-static bool call(VM* vm, ObjectFunction* fn, int arg_count) {
+static bool call(VM* vm, ObjectClosure* closure, int arg_count) {
+  const ObjectFunction* fn = closure->function;
+
   if (arg_count != fn->arity) {
     runtime_error(vm, "Expected %d arguments but got %d.", fn->arity, arg_count);
     return false;
@@ -297,7 +306,7 @@ static bool call(VM* vm, ObjectFunction* fn, int arg_count) {
   }
 
   CallFrame* frame = &vm->frames[vm->frame_count++];
-  frame->function = fn;
+  frame->closure = closure;
   frame->ip = fn->chunk.code;
   frame->slots = vm->stack_top - arg_count - 1;
   return true;
@@ -306,8 +315,9 @@ static bool call(VM* vm, ObjectFunction* fn, int arg_count) {
 bool call_value(VM* vm, Value callee, uint8_t arg_count) {
   if (IS_OBJECT(callee)) {
     switch (OBJECT_TYPE(callee)) {
-      case OBJ_FUNCTION: 
-        return call(vm, AS_FUNCTION(callee), arg_count);
+      case OBJ_CLOSURE: {
+        return call(vm, AS_CLOSURE(callee), arg_count);
+      }
 
       case OBJ_NATIVE_FN: {
         NativeFn fn = AS_NATIVE_FN(callee);
@@ -330,7 +340,10 @@ InterpretResult VM_interpret(VM* vm, const char *source) {
   if (fn == NULL) return INTERPRET_COMPILE_ERROR;
 
   push(vm, OBJECT_VAL(fn));
-  call(vm, fn, 0);
+  ObjectClosure* closure = ObjectClosure_crate(fn);
+  pop(vm);
+  push(vm, OBJECT_VAL(closure));
+  call(vm, closure, 0);
 
   return run(vm);
 }
@@ -403,9 +416,9 @@ static void runtime_error(VM* vm, const char* fmt, ...) {
 
   for (int i = vm->frame_count - 1; i >= 0; i--) {
     CallFrame* frame = &vm->frames[i];
-    ObjectFunction* function = frame->function;
-    size_t instruction = frame->ip - frame->function->chunk.code - 1;
-    size_t line = Chunk_get_line(&frame->function->chunk, instruction);
+    ObjectFunction* function = frame->closure->function;
+    size_t instruction = frame->ip - function->chunk.code - 1;
+    size_t line = Chunk_get_line(&function->chunk, instruction);
     fprintf(stderr, "[line %zu] in script\n", line);
 
     if (function->name == NULL) {
