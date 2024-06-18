@@ -70,6 +70,12 @@ ObjectFunction* ObjectFunction_create() {
   return fn;
 }
 
+ObjectClosure* ObjectClosure_crate(ObjectFunction* function) {
+  ObjectClosure* closure = ALLOCATE_OBJECT(ObjectClosure, OBJ_CLOSURE);
+  closure->function = function;
+  return closure;
+}
+
 ObjectFunction* ObjectNativeFn_create(NativeFn function) {
   ObjectNativeFn* native_fn = ALLOCATE_OBJECT(ObjectNativeFn, OBJ_NATIVE_FN);
   native_fn->function = function;
@@ -88,6 +94,7 @@ void Object_print(Value value) {
   switch (OBJECT_TYPE(value)) {
     case OBJ_STRING: printf("%s", AS_CSTRING(value)); break;
     case OBJ_FUNCTION: print_function(AS_FUNCTION(value)); break;
+    case OBJ_CLOSURE: print_function(AS_CLOSURE(value)->function); break;
     case OBJ_NATIVE_FN: printf("<native fn>"); break;
   }
 }

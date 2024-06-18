@@ -8,6 +8,7 @@
 typedef enum {
   OBJ_STRING,
   OBJ_FUNCTION,
+  OBJ_CLOSURE,
   OBJ_NATIVE_FN,
 } ObjectType;
 
@@ -22,6 +23,11 @@ typedef struct {
   Chunk chunk;
   ObjectString* name;
 } ObjectFunction;
+
+typedef struct {
+  Object object;
+  ObjectFunction* function;
+} ObjectClosure;
 
 typedef Value (*NativeFn) (size_t arg_count, Value* args);
 
@@ -40,10 +46,12 @@ struct ObjectString {
 #define OBJECT_TYPE(value) (AS_OBJECT(value)->type)
 
 #define IS_FUNCTION(value) is_object_type(value, OBJ_FUNCTION)
+#define IS_CLOSURE(value) is_object_type(value, OBJ_CLOSURE)
 #define IS_NATIVE_FN(value) is_object_type(value, OBJ_NATIVE_FN)
 #define IS_STRING(value)   is_object_type(value, OBJ_STRING)
 
 #define AS_FUNCTION(value) ((ObjectFunction*) AS_OBJECT(value))
+#define AS_CLOSURE(value) ((ObjectClosure*) AS_OBJECT(value))
 #define AS_NATIVE_FN(value) (((ObjectNativeFn*) AS_OBJECT(value))->function)
 #define AS_STRING(value)   ((ObjectString*) AS_OBJECT(value))
 #define AS_CSTRING(value)  (((ObjectString*) AS_OBJECT(value))->chars)
@@ -65,6 +73,8 @@ ObjectString* ObjectString_take(char* chars, size_t length);
 ObjectString* ObjectString_copy(const char* chars, size_t length);
 
 ObjectFunction* ObjectFunction_create();
+
+ObjectClosure* ObjectClosure_crate(ObjectFunction* function);
 
 ObjectFunction* ObjectNativeFn_create(NativeFn fn);
 

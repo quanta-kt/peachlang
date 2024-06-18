@@ -42,6 +42,11 @@ void free_object(Object* object) {
       FREE(ObjectFunction, object);
       break;
     }
+    case OBJ_CLOSURE: {
+      ObjectClosure* closure = (ObjectClosure*) object;
+      FREE(ObjectClosure, closure);
+      break;
+    }
     case OBJ_NATIVE_FN: {
       FREE(ObjectFunction, object);
       break;
