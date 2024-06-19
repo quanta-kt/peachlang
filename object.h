@@ -7,6 +7,7 @@
 
 typedef enum {
   OBJ_STRING,
+  OBJ_UPVALUE,
   OBJ_FUNCTION,
   OBJ_CLOSURE,
   OBJ_NATIVE_FN,
@@ -17,16 +18,27 @@ struct Object {
   struct Object* next;
 };
 
+typedef struct ObjectUpvalue {
+  Object object;
+  Value* location;
+  Value closed;
+  struct ObjectUpvalue* next;
+} ObjectUpvalue;
+
+
 typedef struct {
   Object object;
   size_t arity;
   Chunk chunk;
   ObjectString* name;
+  uint8_t upvalue_count;
 } ObjectFunction;
 
 typedef struct {
   Object object;
   ObjectFunction* function;
+  ObjectUpvalue** upvalues;
+  uint8_t upvalue_count;
 } ObjectClosure;
 
 typedef Value (*NativeFn) (size_t arg_count, Value* args);
@@ -71,6 +83,8 @@ ObjectString* ObjectString_take(char* chars, size_t length);
  * Allocates an ObjectString object and initializes it with the given C-string.
  */
 ObjectString* ObjectString_copy(const char* chars, size_t length);
+
+ObjectUpvalue* ObjectUpvalue_create(Value* slot);
 
 ObjectFunction* ObjectFunction_create();
 

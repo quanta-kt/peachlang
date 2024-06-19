@@ -13,6 +13,8 @@
 #include <string.h>
 #include <time.h>
 
+static ObjectUpvalue* capture_upvalue(VM* vm, Value* local);
+static void close_upvalue(VM* vm, Value* last);
 static void concatenate(VM* vm);
 static bool is_falsey(Value value);
 static void runtime_error(VM* vm, const char* fmt, ...);
@@ -100,6 +102,7 @@ static InterpretResult run(VM* vm) {
 
       case OP_RETURN: {
         Value result = pop(vm);
+        close_upvalue(vm, frame->slots);
         vm->frame_count--;
 
         if (vm->frame_count == 0) {
@@ -210,6 +213,17 @@ static InterpretResult run(VM* vm) {
         break;
       }
 
+      case OP_GET_UPVALUE: {
+        uint8_t slot = READ_BYTE();
+        push(vm, *frame->closure->upvalues[slot]->location);
+        break;
+      }
+
+      case OP_SET_UPVALUE: {
+        uint8_t slot = READ_BYTE();
+        *frame->closure->upvalues[slot]->location = peek(vm, 0);
+      }
+
       case OP_NIL:   push(vm, NIL_VAL); break;
       case OP_FALSE: push(vm, BOOL_VAL(false)); break;
       case OP_TRUE:  push(vm, BOOL_VAL(true)); break;
@@ -281,6 +295,21 @@ static InterpretResult run(VM* vm) {
         ObjectFunction* function  = AS_FUNCTION(READ_CONSTANT());
         ObjectClosure* closure = ObjectClosure_crate(function);
         push(vm, OBJECT_VAL(closure));
+        for (uint8_t i = 0; i < closure->upvalue_count; i++) {
+          uint8_t is_local = READ_BYTE();
+          uint8_t index = READ_BYTE();
+          if (is_local) {
+            closure->upvalues[i] = capture_upvalue(vm, frame->slots + index);
+          } else {
+            closure->upvalues[i] = frame->closure->upvalues[index];
+          }
+        }
+        break;
+      }
+
+      case OP_CLOSE_UPVALUE: {
+        close_upvalue(vm, vm->stack_top - 1);
+        pop(vm);
         break;
       }
     }
@@ -290,6 +319,39 @@ static InterpretResult run(VM* vm) {
   #undef READ_SHORT 
   #undef READ_CONSTANT
   #undef READ_CONSTANT_LONG
+}
+
+static ObjectUpvalue* capture_upvalue(VM* vm, Value* local) {
+  ObjectUpvalue* previous = NULL;
+  ObjectUpvalue* upvalue = vm->open_upvalues;
+
+  while (upvalue != NULL && upvalue->location > local) {
+    previous = upvalue;
+    upvalue = upvalue->next;
+  } 
+
+  if (upvalue != NULL && upvalue->location == local) {
+    return upvalue;
+  }
+
+  ObjectUpvalue* created_upvalue = ObjectUpvalue_create(local);
+  created_upvalue->next = upvalue;
+  if (previous == NULL) {
+    vm->open_upvalues = created_upvalue;
+  } else {
+    previous->next = created_upvalue;
+  }
+
+  return created_upvalue;
+}
+
+static void close_upvalue(VM* vm, Value* last) {
+  while (vm->open_upvalues != NULL && vm->open_upvalues->location >= last) {
+    ObjectUpvalue* upvalue = vm->open_upvalues;
+    upvalue->closed = *upvalue->location;
+    upvalue->location = &upvalue->closed;
+    vm->open_upvalues = upvalue->next;
+  }
 }
 
 static bool call(VM* vm, ObjectClosure* closure, int arg_count) {
@@ -463,5 +525,6 @@ static Value peek(VM* vm, size_t depth) {
 static void reset_stack(VM* vm) {
   vm->stack_top = vm->stack;
   vm->frame_count = 0;
+  vm->open_upvalues = NULL;
 }
 

@@ -17,12 +17,19 @@
 typedef struct {
   Token name;
   int depth;
+  bool is_captured;
 } Local;
 
 typedef enum {
   TYPE_FUNCTION,
   TYPE_SCRIPT
 } FunctionType;
+
+
+typedef struct {
+  bool is_local;
+  int index;
+} Upvalue;
 
 typedef struct Compiler Compiler;
 struct Compiler {
@@ -34,6 +41,8 @@ struct Compiler {
   size_t local_count;
   size_t local_capacity;
   int scope_depth;
+
+  Upvalue upvalues[UINT8_COUNT];
 };
 
 typedef struct {
@@ -102,7 +111,7 @@ static void define_variable(Parser* parser, size_t global);
 static void declare_variable(Parser* parser);
 static void add_local(Parser* parser, Token name);
 static bool identifier_equals(Token* const a, Token* const b);
-static int resolve_local(Parser* parser, Token* name);
+static int resolve_local(Parser* parser, Compiler* compiler, Token* name);
 static void mark_initialized(Parser* parser);
 static void patch_jump(Parser* parser, size_t offset);
 
@@ -312,7 +321,11 @@ static void end_scope(Parser* parser) {
   while (
     compiler->local_count > 0 &&
     compiler->locals[compiler->local_count - 1].depth > compiler->scope_depth) {
-      emit_byte(parser, OP_POP);
+      if (compiler->locals[compiler->local_count - 1].is_captured) {
+        emit_byte(parser, OP_CLOSE_UPVALUE);
+      } else {
+        emit_byte(parser, OP_POP);
+      }
       compiler->local_count--;
   }
 }
@@ -472,15 +485,60 @@ static void variable(Parser* parser, bool can_assign) {
   named_variable(parser, parser->previous, can_assign);
 }
 
+static uint8_t add_upvalue(Parser* parser, Compiler* compiler, int index, bool is_local) {
+  uint8_t upvalue_count = compiler->function->upvalue_count;
+
+  for (uint8_t i = 0; i < upvalue_count; i++) {
+    Upvalue* upvalue = &compiler->upvalues[i];
+    if (upvalue->index == index && upvalue->is_local == is_local) {
+      return i;
+    }
+  }
+
+  if (upvalue_count == UINT8_COUNT) {
+    // FIXME: Increase the upvalue limit by allocating a dynamic array for
+    // upvalues
+    error(parser, "Too many closure variables in a function.");
+    return 0;
+  }
+
+  compiler->upvalues[upvalue_count].is_local = is_local;
+  compiler->upvalues[upvalue_count].index = index;
+  return compiler->function->upvalue_count++;
+}
+
+static int resolve_upvalue(Parser* parser, Compiler* compiler, Token* name) {
+  if (compiler->enclosing == NULL) {
+    return -1;
+  }
+
+  int local = resolve_local(parser, compiler->enclosing, name);
+  if (local != -1) {
+    compiler->enclosing->locals[local].is_captured = true;
+    return add_upvalue(parser, compiler, local, true);
+  }
+
+  int upvalue = resolve_upvalue(parser, compiler->enclosing, name);
+  if (upvalue != -1) {
+    return add_upvalue(parser, compiler, upvalue, false);
+  }
+
+  return -1;
+}
+
 static void named_variable(Parser* parser, Token name, bool can_assign) {
   uint8_t get_op, get_op_long, set_op, set_op_long;
-  int addr = resolve_local(parser, &name);
+  int addr = resolve_local(parser, parser->current_compiler, &name);
 
   if (addr != -1) {
     get_op = OP_GET_LOCAL;
     get_op_long = OP_GET_LOCAL_LONG;
     set_op = OP_SET_LOCAL;
     set_op_long = OP_SET_LOCAL_LONG;
+  } else if ((addr = resolve_upvalue(parser, parser->current_compiler, &name)) != -1) {
+    get_op = OP_GET_UPVALUE;
+    set_op = OP_SET_UPVALUE;
+    // is it currently not possible for upvalue address to be greater than a byte.
   } else {
     addr = identifier_constant(parser, name);
     get_op = OP_GET_GLOBAL;
@@ -498,9 +556,7 @@ static void named_variable(Parser* parser, Token name, bool can_assign) {
   }
 }
 
-static int resolve_local(Parser* parser, Token* name) {
-  Compiler* compiler = parser->current_compiler;
-
+static int resolve_local(Parser* parser, Compiler* compiler, Token* name) {
   if (!compiler->local_count) return -1;
 
   size_t i = compiler->local_count - 1;
@@ -684,6 +740,11 @@ static void function(Parser* parser, FunctionType type) {
 
   ObjectFunction* function = end_compiler(parser);
   emit_bytes(parser, OP_CLOSURE, Chunk_add_constant(current_chunk(parser), OBJECT_VAL(function)));
+
+  for (int i = 0; i < function->upvalue_count; i++) {
+    emit_byte(parser, compiler.upvalues[i].is_local ? 1 : 0);
+    emit_byte(parser, compiler.upvalues[i].index);
+  }
 }
 
 static void fn_declaration(Parser* parser) {
@@ -750,6 +811,7 @@ static void add_local(Parser* parser, Token name) {
   Local* local = &compiler->locals[compiler->local_count++];
   local->name = name;
   local->depth = -1;
+  local->is_captured = false;
 }
 
 static void mark_initialized(Parser* parser) {
@@ -831,6 +893,7 @@ void Compiler_init(Compiler* compiler, Parser* parser, FunctionType type) {
   local->depth = 0;
   local->name.start = "";
   local->name.length = 0;
+  local->is_captured = false;
 }
 
 void Compiler_free(Compiler* compiler) {

@@ -62,6 +62,14 @@ ObjectString* ObjectString_copy(const char* chars, size_t length) {
   return ObjectString_take(buffer, length);
 }
 
+ObjectUpvalue* ObjectUpvalue_create(Value* slot) {
+  ObjectUpvalue* upvalue = ALLOCATE_OBJECT(ObjectUpvalue, OBJ_UPVALUE);
+  upvalue->location = slot;
+  upvalue->closed = NIL_VAL;
+  upvalue->next = NULL;
+  return upvalue;
+}
+
 ObjectFunction* ObjectFunction_create() {
   ObjectFunction* fn = ALLOCATE_OBJECT(ObjectFunction, OBJ_FUNCTION);
   fn->arity = 0;
@@ -71,8 +79,15 @@ ObjectFunction* ObjectFunction_create() {
 }
 
 ObjectClosure* ObjectClosure_crate(ObjectFunction* function) {
+  ObjectUpvalue** upvalues = ALLOCATE(ObjectUpvalue*, function->upvalue_count);
+  for (size_t i = 0; i < function->upvalue_count; i++) {
+    upvalues[i] = NULL;
+  }
+
   ObjectClosure* closure = ALLOCATE_OBJECT(ObjectClosure, OBJ_CLOSURE);
   closure->function = function;
+  closure->upvalues = upvalues;
+  closure->upvalue_count = function->upvalue_count;
   return closure;
 }
 
@@ -93,6 +108,7 @@ void print_function(ObjectFunction* fn) {
 void Object_print(Value value) {
   switch (OBJECT_TYPE(value)) {
     case OBJ_STRING: printf("%s", AS_CSTRING(value)); break;
+    case OBJ_UPVALUE: printf("upvalue"); break;
     case OBJ_FUNCTION: print_function(AS_FUNCTION(value)); break;
     case OBJ_CLOSURE: print_function(AS_CLOSURE(value)->function); break;
     case OBJ_NATIVE_FN: printf("<native fn>"); break;

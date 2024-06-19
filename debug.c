@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "chunk.h"
+#include "object.h"
 
 static size_t simple_instruction(const char* name, int offset);
 static size_t byte_instruction(const char* name, const Chunk* chunk, int offset);
@@ -60,6 +61,11 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
       return byte_instruction("OP_SET_LOCAL", chunk, offset);
     case OP_SET_LOCAL_LONG:
       return long_instruction("OP_SET_LOCAL_LONG", chunk, offset);
+    
+    case OP_GET_UPVALUE:
+      return byte_instruction("OP_GET_UPVALUE", chunk, offset);
+    case OP_SET_UPVALUE:
+      return byte_instruction("OP_SET_UPVALUE", chunk, offset);
 
     case OP_JUMP_IF_FALSE:
       return jump_instruction("OP_JUMP_IF_FALSE", chunk, 1, offset);
@@ -108,7 +114,22 @@ size_t disassemble_instruction(Chunk* chunk, size_t offset) {
       printf("%-16s %4d ", "OP_CLOSURE", constant);
       Value_print(chunk->constants.values[constant]);
       printf("\n");
+
+      ObjectFunction* function = AS_FUNCTION(chunk->constants.values[constant]);
+      for (int j = 0; j < function->upvalue_count; j++) {
+        bool is_local = chunk->code[offset++];
+        bool index = chunk->code[offset++];
+        printf(
+          "%04ld    |                     %s %d\n",
+          offset - 2, is_local ? "local" : "upvalue", index
+        );
+      }
+
       return offset;
+    }
+
+    case OP_CLOSE_UPVALUE: {
+      return simple_instruction("OP_CLOSE_UPVALUE", offset);
     }
 
     default:

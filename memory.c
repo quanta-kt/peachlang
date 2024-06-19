@@ -36,6 +36,10 @@ void free_object(Object* object) {
       FREE_ARRAY(char, str->chars, str->length + 1);
       FREE(ObjectString, object);
     }
+    case OBJ_UPVALUE: {
+      FREE(ObjectUpvalue, object);
+      break;
+    }
     case OBJ_FUNCTION: {
       ObjectFunction* function = (ObjectFunction*)object;
       Chunk_free(&function->chunk);
@@ -44,6 +48,7 @@ void free_object(Object* object) {
     }
     case OBJ_CLOSURE: {
       ObjectClosure* closure = (ObjectClosure*) object;
+      FREE_ARRAY(ObjectUpvalue*, closure->upvalues, closure->upvalue_count);
       FREE(ObjectClosure, closure);
       break;
     }

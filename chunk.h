@@ -19,6 +19,9 @@ typedef enum {
   OP_SET_LOCAL,
   OP_SET_LOCAL_LONG,
 
+  OP_GET_UPVALUE,
+  OP_SET_UPVALUE,
+
   OP_NIL,
   OP_TRUE,
   OP_FALSE,
@@ -45,6 +48,7 @@ typedef enum {
 
   OP_CALL,
   OP_CLOSURE,
+  OP_CLOSE_UPVALUE,
 } OpCode;
 
 typedef struct {

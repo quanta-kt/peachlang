@@ -33,6 +33,7 @@ typedef struct {
 
   Table strings;
 
+  ObjectUpvalue* open_upvalues;
 } VM;
 
 typedef enum {

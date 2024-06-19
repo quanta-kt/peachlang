@@ -1,5 +1,36 @@
-fn test() {
-    print "hi";
+let write;
+let read;
+
+fn test(initial) {
+    {
+        let a = initial;
+        let b = 1;
+
+        fn _write(value) {
+            a = value;
+        }
+
+        fn _read() {
+            return a; 
+        }
+
+        write = _write;
+        read = _read;
+    }
 }
 
-test();
+test(11);
+print read();
+write(read() + 1);
+print read();
+
+fn f() {
+    let a = 12; 
+    let b = 13;
+    let c = 14;
+}
+f();
+
+print read();
+write(99);
+print read();
