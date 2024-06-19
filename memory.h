@@ -4,6 +4,11 @@
 #include "common.h"
 #include "object.h"
 
+#ifdef DEBUG_LOG_GC
+#include <stdio.h>
+#include "debug.h"
+#endif
+
 #define ALLOCATE(type, count) \
   (type*) reallocate(NULL, 0, sizeof(type) * (count))
 
@@ -23,6 +28,8 @@ void * reallocate(void* pointer, size_t old_size, size_t new_size);
 
 void free_objects(Object *head);
 void free_object(Object* object);
+
+void gc();
 
 #endif // !peach_memory_h
 

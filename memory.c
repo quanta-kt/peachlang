@@ -3,8 +3,15 @@
 
 #include "memory.h"
 #include "object.h"
+#include "vm.h"
 
 void * reallocate(void* pointer, size_t old_size, size_t new_size) {
+  if (new_size > old_size) {
+    #ifdef DEBUG_STRESS_GC
+      gc();
+    #endif
+  }
+
   if (new_size == 0) {
     free(pointer);
     return NULL;
@@ -30,6 +37,10 @@ void free_objects(Object *head) {
 }
 
 void free_object(Object* object) {
+  #ifdef DEBUG_LOG_GC
+    printf("%p free type %d\n", (void*) object, object->type);
+  #endif
+
   switch (object->type) {
     case OBJ_STRING: {
       ObjectString* str = (ObjectString*) object;
@@ -59,3 +70,18 @@ void free_object(Object* object) {
   }
 }
 
+static void mark_roots() {
+
+}
+
+void gc() {
+  #ifdef DEBUG_LOG_GC
+    printf("-- gc begin\n");
+  #endif
+
+  mark_roots();
+
+  #ifdef DEBUG_LOG_GC
+    printf("-- gc end\n");
+  #endif
+}
