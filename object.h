@@ -5,6 +5,8 @@
 #include "chunk.h"
 #include "value.h"
 
+#define STRING_HASH_INIT 2166136261
+
 typedef enum {
   OBJ_STRING,
   OBJ_UPVALUE,
@@ -92,7 +94,7 @@ ObjectClosure* ObjectClosure_crate(ObjectFunction* function);
 
 ObjectFunction* ObjectNativeFn_create(NativeFn fn);
 
-uint32_t string_hash(const char* str, size_t length);
+uint32_t string_hash(uint32_t start, const char* str, size_t length);
 
 #endif // !peach_object_h
 

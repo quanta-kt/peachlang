@@ -22,8 +22,8 @@ static Object* Object_create(size_t size, ObjectType type) {
   return object;
 }
 
-uint32_t string_hash(const char* str, size_t length) {
-  uint32_t hash = 2166136261u;
+uint32_t string_hash(uint32_t start, const char* str, size_t length) {
+  uint32_t hash = start;
 
   for (size_t i = 0; i < length; i++) {
     hash ^= (uint32_t) str[i];
@@ -52,13 +52,13 @@ ObjectString* ObjectString_take(char* chars, size_t length) {
   ObjectString* string = ObjectString_create();
   string->length = length;
   string->chars = chars;
-  string->hash = string_hash(chars, length);
+  string->hash = string_hash(STRING_HASH_INIT, chars, length);
 
   return string;
 }
 
 ObjectString* ObjectString_copy(const char* chars, size_t length) {
-  uint32_t hash = string_hash(chars, length);
+  uint32_t hash = string_hash(STRING_HASH_INIT, chars, length);
   char* buffer = ALLOCATE(char, length + 1);
 
   memcpy(buffer, chars, length);

@@ -52,5 +52,10 @@ void Table_print(Table* table);
 
 ObjectString* Table_find_str(Table* table, const char* str, size_t length);
 
+ObjectString* Table_find_str_combined(
+  Table* table, const char* a, size_t a_len,
+  const char* b, size_t b_len
+);
+
 #endif // !peach_table_h
 

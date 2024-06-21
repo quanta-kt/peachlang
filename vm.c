@@ -411,7 +411,7 @@ InterpretResult VM_interpret(VM* vm, const char *source) {
 }
 
 bool VM_get_intern_str(VM* vm, const char* chars, size_t length, ObjectString** dest) {
-  uint32_t hash = string_hash(chars, length);
+  uint32_t hash = string_hash(STRING_HASH_INIT, chars, length);
 
   ObjectString* str = Table_find_str(&vm->strings, chars, length);
   bool create = str == NULL;
@@ -419,23 +419,6 @@ bool VM_get_intern_str(VM* vm, const char* chars, size_t length, ObjectString** 
   if (create) {
     str = ObjectString_copy(chars, length);
     Table_set(&vm->strings, str, NIL_VAL);
-  }
-
-  *dest = str;
-  return create;
-}
-
-bool VM_get_intern_str_take(VM* vm, char* chars, size_t length, ObjectString** dest) {
-  uint32_t hash = string_hash(chars, length);
-
-  ObjectString* str = Table_find_str(&vm->strings, chars, length);
-  bool create = str == NULL;
-
-  if (create) {
-    str = ObjectString_take(chars, length);
-    Table_set(&vm->strings, str, NIL_VAL);
-  } else {
-    FREE_ARRAY(char, chars, length + 1);
   }
 
   *dest = str;
@@ -453,14 +436,22 @@ static void concatenate(VM* vm) {
   ObjectString* a = AS_STRING(pop(vm));
   size_t length = a->length + b->length;
 
+  ObjectString* dest = Table_find_str_combined(
+    &vm->strings, a->chars, a->length,
+    b->chars, b->length
+  );
+  if (dest != NULL) {
+    goto end;
+  }
+
   char* str = ALLOCATE(char, length + 1);
 
   memcpy(str, a->chars, a->length);
   memcpy(str + a->length, b->chars, b->length);
   str[length] = '\0';
+  dest = ObjectString_take(str, length);
 
-  ObjectString* dest;
-  VM_get_intern_str_take(vm, str, length, &dest);
+  end:
   push(vm, OBJECT_VAL(dest));
 }
 

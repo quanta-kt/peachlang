@@ -94,7 +94,7 @@ static Entry* find_entry(Entry* entries, size_t capacity, ObjectString* key) {
 ObjectString* Table_find_str(Table* table, const char* str, size_t length) {
   if (table->count == 0) return NULL;
 
-  uint32_t hash = string_hash(str, length);
+  uint32_t hash = string_hash(STRING_HASH_INIT, str, length);
   uint32_t index = hash % table->capacity;
 
   for (;;) {
@@ -107,6 +107,37 @@ ObjectString* Table_find_str(Table* table, const char* str, size_t length) {
         entry->key->length == length &&
         entry->key->hash == hash &&
         memcmp(entry->key->chars, str, length) == 0
+      ) {
+        return entry->key;
+      }
+    }
+
+    index = (index + 1) % table->capacity;
+  }
+}
+
+ObjectString* Table_find_str_combined(
+  Table* table, const char* a, size_t a_len, 
+  const char* b, size_t b_len
+) { 
+  if (table->count == 0) return NULL;
+
+  uint32_t hash = string_hash(STRING_HASH_INIT, a, a_len);
+  hash = string_hash(hash, b, b_len);
+  uint32_t index = hash % table->capacity;
+  size_t length = a_len + b_len; 
+
+  for (;;) {
+    Entry* entry = &table->entries[index];
+
+    if (entry->key == NULL) {
+      if (IS_NIL(entry->value)) return NULL;
+    } else {
+      if (
+        entry->key->length == length &&
+        entry->key->hash == hash &&
+        memcmp(entry->key->chars, a, a_len) == 0 &&
+        memcmp(entry->key->chars + a_len, b, b_len) == 0
       ) {
         return entry->key;
       }
