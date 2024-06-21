@@ -46,6 +46,7 @@ void free_object(Object* object) {
       ObjectString* str = (ObjectString*) object;
       FREE_ARRAY(char, str->chars, str->length + 1);
       FREE(ObjectString, object);
+      break;
     }
     case OBJ_UPVALUE: {
       FREE(ObjectUpvalue, object);
